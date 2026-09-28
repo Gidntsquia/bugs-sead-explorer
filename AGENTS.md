@@ -20,5 +20,13 @@
 - CORS is `*`. Be polite: max 3 concurrent requests, disk cache under `data/cache/sead`, no bulk downloads.
 
 ## Testing
-- Chrome extension may be absent; headless Playwright (playwright-core + the cached chromium headless shell in `~/Library/Caches/ms-playwright`) works for screenshots and clicks.
+- Chrome extension may be absent; headless Playwright (playwright-core + the cached chromium headless shell in `~/Library/Caches/ms-playwright`) works for screenshots and clicks. Install playwright-core in a scratch dir outside the repo, not in `package.json`.
 - Offline test: run with `SEAD_URL=http://127.0.0.1:9/postgrest` and a throwaway `CACHE_DIR`.
+
+## Analysis and 3D view (round 4)
+- Frontend pages: `web/src/pages/Analyze.tsx` (tabs: filter/chart, change-over-time, habitat mix — via `?tab=`), `web/src/pages/View3D.tsx` (Three.js scene).
+- Server routes in `server/bugs.ts` / `server/index.ts`: `bugs/filters`, `bugs/analyze`, `bugs/timeseries`, `bugs/habitatmix`, `bugs/points3d`.
+- `bugsTimeSeries` drops empty bins before returning (`bins.filter(b => b.samples > 0)`) — otherwise sparse/undated date ranges produce thousands of near-empty bins. The frontend `<XAxis type="category">` (not `"number"`) spaces bins evenly by order, not literal years, so one extreme outlier (e.g. a Pliocene-age sample) can't squash the rest of the chart.
+- 3D view renders points as a single `THREE.InstancedMesh`, not one `THREE.Mesh` per point — 9,000+ individual meshes hangs headless (software/swiftshader) WebGL rendering. Picking uses `raycaster.intersectObjects(meshes)[0].instanceId` to index back into the points array (no per-object `userData` on an InstancedMesh hit). Renderer uses `antialias: false`, `powerPreference: "low-power"`, `setPixelRatio(1)` to keep frame cost low.
+- Samples with no recorded depth are placed on a fixed floor plane (`NO_DEPTH_Y`), not hidden or given a fabricated depth.
+- `three` and `@types/three` are dependencies (added this round).
