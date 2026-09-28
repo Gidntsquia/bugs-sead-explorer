@@ -98,6 +98,7 @@ function TaxonView({ code }: { code: string }) {
           {d.synonyms.length > 0 && <> · also published as <i>{d.synonyms.slice(0, 4).join(", ")}</i></>}
         </p>
         {vague && <p className="mt-1 text-sm text-muted">This is not a single species: <T k="indet">indet. / spp. / sp.</T> or a slash means the fossils could only be narrowed down to a group.</p>}
+        <p className="mt-1 text-sm"><Link to={`/analyze?tab=time&kind=taxon&code=${encodeURIComponent(String(t.code))}`} className="text-link hover:underline">See how it changes over time</Link></p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat tone="bugs" label={<><T k="site">sites</T> where found</>} value={d.siteCount} />
