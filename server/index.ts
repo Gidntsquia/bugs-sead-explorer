@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { config } from "./config";
-import { HttpError, openBugs, bugsError, bugsSummary, bugsSites, bugsSite, searchTaxa, taxon, bugsTables, bugsTable, bugsAvailable } from "./bugs";
+import { HttpError, openBugs, bugsError, bugsSummary, bugsSites, bugsSite, searchTaxa, taxon, bugsTables, bugsTable, bugsAvailable, bugsFilters, bugsAnalyze, bugsTimeSeries, bugsHabitatMix, bugsPoints3D } from "./bugs";
 import { seadStatus, matchesForBugsSite, seadSites, seadSite, compare, seadTables, seadTableCount, seadTable } from "./sead";
 
 openBugs();
@@ -16,6 +16,17 @@ const routes: [RegExp, Handler][] = [
   [/^\/api\/bugs\/taxon\/([^/]+)$/, m => taxon(decodeURIComponent(m[1]))],
   [/^\/api\/bugs\/tables$/, () => bugsTables()],
   [/^\/api\/bugs\/table\/([^/]+)$/, (m, u) => bugsTable(decodeURIComponent(m[1]), u.searchParams)],
+  [/^\/api\/bugs\/filters$/, () => bugsFilters()],
+  [/^\/api\/bugs\/analyze$/, (_, u) => bugsAnalyze({
+    country: u.searchParams.get("country") ?? undefined, period: u.searchParams.get("period") ?? undefined,
+    habitat: u.searchParams.get("habitat") ?? undefined, taxon: u.searchParams.get("taxon") ?? undefined,
+  })],
+  [/^\/api\/bugs\/timeseries$/, (_, u) => bugsTimeSeries(
+    (u.searchParams.get("kind") as "taxon" | "habitat" | "country") ?? "taxon", u.searchParams.get("code") ?? "",
+    Number(u.searchParams.get("binYears") ?? 500),
+  )],
+  [/^\/api\/bugs\/habitatmix$/, (_, u) => bugsHabitatMix((u.searchParams.get("sites") ?? "").split(",").map(s => s.trim()).filter(Boolean))],
+  [/^\/api\/bugs\/points3d$/, () => bugsPoints3D()],
   [/^\/api\/sead\/sites$/, () => seadSites()],
   [/^\/api\/sead\/site\/(\d+)$/, m => seadSite(Number(m[1]))],
   [/^\/api\/sead\/matches\/([^/]+)$/, m => matchesForBugsSite(decodeURIComponent(m[1]))],

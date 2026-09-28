@@ -244,3 +244,146 @@ export function bugsTaxonByName(genus: string, species: string) {
 }
 
 export function bugsAvailable() { return db != null; }
+
+// ---------- analysis: filters ----------
+export function bugsFilters() {
+  const countries = q("SELECT Country AS code, Country AS label, COUNT(*) AS sites FROM TSite WHERE Country IS NOT NULL AND Country != '' GROUP BY Country ORDER BY sites DESC");
+  const periods = q(`SELECT p.PeriodCODE AS code, p.PeriodName AS label, p.Begin AS begin, p.End AS end, COUNT(*) AS samples
+                     FROM TDatesPeriod d JOIN TPeriods p ON p.PeriodCODE=d.PeriodCODE WHERE d.PeriodCODE != '?'
+                     GROUP BY p.PeriodCODE ORDER BY samples DESC`);
+  const habitats = q("SELECT BugsEcoCODE AS code, EcoLabel AS label FROM TEcoDefBugs ORDER BY EcoLabel");
+  return { countries, periods, habitats };
+}
+
+// ---------- analysis: filter & chart ----------
+type AnalyzeParams = { country?: string; period?: string; habitat?: string; taxon?: string };
+function analyzeWhere(p: AnalyzeParams) {
+  const where: string[] = [], args: any[] = [];
+  if (p.country) { where.push("s.Country = ?"); args.push(p.country); }
+  if (p.taxon) { where.push("f.CODE = ?"); args.push(p.taxon); }
+  if (p.habitat) { where.push("f.CODE IN (SELECT CODE FROM TEcoBugs WHERE BugsEcoCODE = ?)"); args.push(p.habitat); }
+  if (p.period) { where.push("sa.SampleCODE IN (SELECT SampleCODE FROM TDatesPeriod WHERE PeriodCODE = ?)"); args.push(p.period); }
+  return { where, args };
+}
+
+export function bugsAnalyze(p: AnalyzeParams) {
+  const { where, args } = analyzeWhere(p);
+  const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const base = `FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE JOIN TSite s ON s.SiteCODE=sa.SiteCODE ${w}`;
+  const coordWhere = [...where, "s.LatDD IS NOT NULL", "s.LongDD IS NOT NULL", "NOT (s.LatDD=0 AND s.LongDD=0)"];
+  // with no filters, use every BugsCEP site with coordinates (not just ones with fossil records) so "clear filters" restores the full map
+  const sites = where.length
+    ? q(`SELECT DISTINCT s.SiteCODE AS code, s.SiteName AS name, s.Country AS country, s.LatDD AS lat, s.LongDD AS lon
+         FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE JOIN TSite s ON s.SiteCODE=sa.SiteCODE
+         WHERE ${coordWhere.join(" AND ")}`, ...args)
+    : q(`SELECT SiteCODE AS code, SiteName AS name, Country AS country, LatDD AS lat, LongDD AS lon FROM TSite
+         WHERE LatDD IS NOT NULL AND LongDD IS NOT NULL AND NOT (LatDD=0 AND LongDD=0)`);
+  const totals = one(`SELECT COUNT(*) AS records, SUM(f.Abundance) AS individuals, COUNT(DISTINCT f.CODE) AS taxa, COUNT(DISTINCT sa.SampleCODE) AS samples ${base}`, ...args);
+  const byFamily = q(`SELECT i.FAMILY AS name, SUM(f.Abundance) AS individuals ${base.replace("FROM TFossil f", 'FROM TFossil f JOIN "INDEX" i ON i.CODE=f.CODE')} GROUP BY i.FAMILY ORDER BY individuals DESC LIMIT 12`, ...args);
+  const byPeriod = q(`SELECT p.PeriodName AS name, p.Begin AS begin, COUNT(DISTINCT sa.SampleCODE) AS samples
+                      ${base.replace("FROM TFossil f", "FROM TFossil f JOIN TDatesPeriod dp ON dp.SampleCODE=sa.SampleCODE JOIN TPeriods p ON p.PeriodCODE=dp.PeriodCODE")}
+                      ${w ? "AND" : "WHERE"} dp.PeriodCODE != '?' GROUP BY p.PeriodCODE ORDER BY p.Begin DESC LIMIT 20`, ...args);
+  const byHabitat = q(`SELECT d.EcoLabel AS name, SUM(f.Abundance) AS individuals
+                      ${base.replace("FROM TFossil f", "FROM TFossil f JOIN TEcoBugs e ON e.CODE=f.CODE JOIN TEcoDefBugs d ON d.BugsEcoCODE=e.BugsEcoCODE")}
+                      GROUP BY d.BugsEcoCODE ORDER BY individuals DESC LIMIT 12`, ...args);
+  return {
+    filters: p, siteCount: sites.length, sites,
+    records: totals?.records ?? 0, individuals: totals?.individuals ?? 0, taxa: totals?.taxa ?? 0, sampleCount: totals?.samples ?? 0,
+    byFamily, byPeriod, byHabitat,
+  };
+}
+
+// ---------- analysis: change over time ----------
+function sampleAgeMidpoints(sampleCodes: string[]): Map<string, number> {
+  const items = agesForSamples(sampleCodes).filter(i => i.sampleCode);
+  const bySample = new Map<string, AgeItem[]>();
+  for (const it of items) bySample.set(it.sampleCode!, [...(bySample.get(it.sampleCode!) ?? []), it]);
+  const rank: Record<AgeItem["kind"], number> = { calendar: 0, radiocarbon: 1, radiometric: 1, period: 2 };
+  const out = new Map<string, number>();
+  for (const [sc, its] of bySample) {
+    const bestRank = Math.min(...its.map(i => rank[i.kind]));
+    const use = its.filter(i => rank[i.kind] === bestRank);
+    const olders = use.map(i => i.olderBP).filter((x): x is number => x != null);
+    const youngers = use.map(i => i.youngerBP).filter((x): x is number => x != null);
+    if (!olders.length && !youngers.length) continue;
+    const o = Math.max(...olders, ...youngers), y = Math.min(...youngers, ...olders);
+    out.set(sc, (o + y) / 2);
+  }
+  return out;
+}
+
+export function bugsTimeSeries(kind: "taxon" | "habitat" | "country", code: string, binYears = 500) {
+  if (!code) throw new HttpError(400, "code is required");
+  let rows: { SampleCODE: string; n: number }[];
+  if (kind === "taxon") rows = q("SELECT SampleCODE, SUM(Abundance) AS n FROM TFossil WHERE CODE=? GROUP BY SampleCODE", code);
+  else if (kind === "habitat") rows = q(`SELECT sa.SampleCODE, SUM(f.Abundance) AS n FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE
+                                          WHERE f.CODE IN (SELECT CODE FROM TEcoBugs WHERE BugsEcoCODE=?) GROUP BY sa.SampleCODE`, code);
+  else if (kind === "country") rows = q(`SELECT sa.SampleCODE, SUM(f.Abundance) AS n FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE
+                                          JOIN TSite s ON s.SiteCODE=sa.SiteCODE WHERE s.Country=? GROUP BY sa.SampleCODE`, code);
+  else throw new HttpError(400, `Unknown kind ${kind}`);
+  const totalSamples = rows.length;
+  const mids = sampleAgeMidpoints(rows.map(r => r.SampleCODE));
+  const undatedSamples = totalSamples - mids.size;
+  const dated = rows.filter(r => mids.has(r.SampleCODE)).map(r => ({ bp: mids.get(r.SampleCODE)!, n: r.n, sampleCode: r.SampleCODE }));
+  if (!dated.length) return { kind, code, binYears, bins: [], undatedSamples, totalSamples };
+  const minBP = Math.min(...dated.map(d => d.bp)), maxBP = Math.max(...dated.map(d => d.bp));
+  const start = Math.floor(minBP / binYears) * binYears, end = Math.ceil(maxBP / binYears) * binYears;
+  const bins: { fromBP: number; toBP: number; individuals: number; samples: number }[] = [];
+  for (let b = start; b < end; b += binYears) bins.push({ fromBP: b + binYears, toBP: b, individuals: 0, samples: 0 });
+  for (const d of dated) {
+    const idx = Math.min(bins.length - 1, Math.floor((d.bp - start) / binYears));
+    if (idx < 0) continue;
+    bins[idx].individuals += d.n; bins[idx].samples += 1;
+  }
+  const nonEmpty = bins.filter(b => b.samples > 0);
+  nonEmpty.reverse(); // oldest first
+  return { kind, code, binYears, bins: nonEmpty, undatedSamples, totalSamples };
+}
+
+// ---------- analysis: habitat mix ----------
+export function bugsHabitatMix(siteCodes: string[]) {
+  if (!siteCodes.length) throw new HttpError(400, "at least one site code is required");
+  return siteCodes.map(code => {
+    const site = one("SELECT SiteCODE AS code, SiteName AS name FROM TSite WHERE SiteCODE=?", code);
+    if (!site) throw new HttpError(404, `No BugsCEP site ${code}`);
+    const total = one<{ n: number }>(`SELECT SUM(f.Abundance) AS n FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE WHERE sa.SiteCODE=?`, code)?.n ?? 0;
+    const uncoded = one<{ n: number }>(`SELECT SUM(f.Abundance) AS n FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE
+                                        WHERE sa.SiteCODE=? AND f.CODE NOT IN (SELECT DISTINCT CODE FROM TEcoBugs)`, code)?.n ?? 0;
+    const habitats = q(`SELECT d.BugsEcoCODE AS code, d.EcoLabel AS label, SUM(f.Abundance) AS individuals
+                        FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE JOIN TEcoBugs e ON e.CODE=f.CODE JOIN TEcoDefBugs d ON d.BugsEcoCODE=e.BugsEcoCODE
+                        WHERE sa.SiteCODE=? GROUP BY d.BugsEcoCODE ORDER BY individuals DESC`, code)
+      .map((h: any) => ({ ...h, share: total ? h.individuals / total : 0 }));
+    const sampleRows = q<{ SampleCODE: string }>("SELECT SampleCODE FROM TSample WHERE SiteCODE=? ORDER BY SampleCODE", code);
+    const samples = sampleRows.map(({ SampleCODE: sc }) => {
+      const sTotal = one<{ n: number }>(`SELECT SUM(Abundance) AS n FROM TFossil WHERE SampleCODE=?`, sc)?.n ?? 0;
+      if (!sTotal) return { sampleCode: sc, total: 0, uncoded: 0, habitats: [] };
+      const sUncoded = one<{ n: number }>(`SELECT SUM(Abundance) AS n FROM TFossil WHERE SampleCODE=? AND CODE NOT IN (SELECT DISTINCT CODE FROM TEcoBugs)`, sc)?.n ?? 0;
+      const sHabitats = q(`SELECT d.EcoLabel AS label, SUM(f.Abundance) AS individuals FROM TFossil f JOIN TEcoBugs e ON e.CODE=f.CODE JOIN TEcoDefBugs d ON d.BugsEcoCODE=e.BugsEcoCODE
+                           WHERE f.SampleCODE=? GROUP BY d.BugsEcoCODE ORDER BY individuals DESC`, sc)
+        .map((h: any) => ({ ...h, share: h.individuals / sTotal }));
+      return { sampleCode: sc, total: sTotal, uncoded: sUncoded, habitats: sHabitats };
+    });
+    return { site, total, uncoded, uncodedShare: total ? uncoded / total : 0, habitats, samples };
+  });
+}
+
+// ---------- 3D view ----------
+export function bugsPoints3D() {
+  const rows = q(`SELECT sa.SampleCODE AS sampleCode, sa.SiteCODE AS siteCode, s.SiteName AS siteName, s.LatDD AS lat, s.LongDD AS lon, sa.ZorDepthTop AS depth,
+                    (SELECT SUM(Abundance) FROM TFossil f WHERE f.SampleCODE=sa.SampleCODE) AS individuals
+                   FROM TSample sa JOIN TSite s ON s.SiteCODE=sa.SiteCODE
+                   WHERE s.LatDD IS NOT NULL AND s.LongDD IS NOT NULL AND NOT (s.LatDD=0 AND s.LongDD=0)`)
+    .filter((r: any) => r.individuals > 0);
+  const mids = sampleAgeMidpoints(rows.map((r: any) => r.sampleCode));
+  const habitatRows = q(`SELECT sa.SampleCODE AS sampleCode, d.EcoLabel AS label, SUM(f.Abundance) AS n
+                         FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE JOIN TEcoBugs e ON e.CODE=f.CODE JOIN TEcoDefBugs d ON d.BugsEcoCODE=e.BugsEcoCODE
+                         GROUP BY sa.SampleCODE, d.EcoLabel`);
+  const dominant = new Map<string, { label: string; n: number }>();
+  for (const r of habitatRows) { const cur = dominant.get(r.sampleCode); if (!cur || r.n > cur.n) dominant.set(r.sampleCode, { label: r.label, n: r.n }); }
+  const points = rows.map((r: any) => ({
+    sampleCode: r.sampleCode, siteCode: r.siteCode, siteName: r.siteName, lat: r.lat, lon: r.lon,
+    depth: r.depth, ageBP: mids.get(r.sampleCode) ?? null, individuals: r.individuals,
+    habitat: dominant.get(r.sampleCode)?.label ?? null,
+  }));
+  return { points, counts: { total: points.length, dated: points.filter(p => p.ageBP != null).length, withDepth: points.filter(p => p.depth != null).length } };
+}
