@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { config } from "./config";
 import { HttpError, openBugs, bugsError, bugsSummary, bugsSites, bugsSite, searchTaxa, taxon, bugsTables, bugsTable, bugsAvailable } from "./bugs";
-import { seadStatus, seadSites, seadSite, compare, seadTables, seadTableCount, seadTable } from "./sead";
+import { seadStatus, matchesForBugsSite, seadSites, seadSite, compare, seadTables, seadTableCount, seadTable } from "./sead";
 
 openBugs();
 
@@ -18,6 +18,7 @@ const routes: [RegExp, Handler][] = [
   [/^\/api\/bugs\/table\/([^/]+)$/, (m, u) => bugsTable(decodeURIComponent(m[1]), u.searchParams)],
   [/^\/api\/sead\/sites$/, () => seadSites()],
   [/^\/api\/sead\/site\/(\d+)$/, m => seadSite(Number(m[1]))],
+  [/^\/api\/sead\/matches\/([^/]+)$/, m => matchesForBugsSite(decodeURIComponent(m[1]))],
   [/^\/api\/sead\/tables$/, () => seadTables()],
   [/^\/api\/sead\/count\/([^/]+)$/, m => seadTableCount(decodeURIComponent(m[1]))],
   [/^\/api\/sead\/table\/([^/]+)$/, (m, u) => seadTable(decodeURIComponent(m[1]), u.searchParams)],

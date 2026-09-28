@@ -56,7 +56,7 @@ const toBP = (v: number | null, era: string | null): number | null => {
   return null;
 };
 
-type AgeItem = { kind: "radiocarbon" | "radiometric" | "calendar" | "period"; label: string; olderBP: number | null; youngerBP: number | null; sample: string; detail?: string };
+type AgeItem = { kind: "radiocarbon" | "radiometric" | "calendar" | "period"; label: string; olderBP: number | null; youngerBP: number | null; sample: string; sampleCode?: string; detail?: string };
 
 function agesForSamples(sampleCodes: string[]): AgeItem[] {
   if (!sampleCodes.length) return [];
@@ -72,7 +72,7 @@ function agesForSamples(sampleCodes: string[]): AgeItem[] {
       const isC14 = String(r.DatingMethod ?? "").startsWith("C14");
       const err = Number(r.err) || 0;
       out.push({ kind: isC14 ? "radiocarbon" : "radiometric", label: `${r.Date}${err ? ` ± ${err}` : ""} ${isC14 ? "radiocarbon years BP" : "years BP"}`,
-        olderBP: r.Date + err, youngerBP: Math.max(0, r.Date - err), sample: r.ctx ?? r.SampleCODE, detail: [r.Method ?? r.DatingMethod, r.LabNr].filter(Boolean).join(", ") });
+        olderBP: r.Date + err, youngerBP: Math.max(0, r.Date - err), sample: r.ctx ?? r.SampleCODE, sampleCode: r.SampleCODE, detail: [r.Method ?? r.DatingMethod, r.LabNr].filter(Boolean).join(", ") });
     }
     // calendar dates come as From/To pairs per sample; group them
     const cal = q(`SELECT c.SampleCODE, c.Uncertainty, c.Date, c.BCADBP, sa.RefNrContext AS ctx FROM TDatesCalendar c JOIN TSample sa ON sa.SampleCODE=c.SampleCODE WHERE c.SampleCODE IN (${ph})`, ...chunk);
@@ -82,14 +82,14 @@ function agesForSamples(sampleCodes: string[]): AgeItem[] {
       const bps = rows.map(r => toBP(r.Date, r.BCADBP)).filter((x): x is number => x != null);
       if (!bps.length) continue;
       const fmt = (r: any) => `${(r.Uncertainty ?? "").trim()} ${r.Date} ${r.BCADBP}`.trim();
-      out.push({ kind: "calendar", label: rows.map(fmt).join(" – "), olderBP: Math.max(...bps), youngerBP: Math.min(...bps), sample: rows[0].ctx ?? s });
+      out.push({ kind: "calendar", label: rows.map(fmt).join(" – "), olderBP: Math.max(...bps), youngerBP: Math.min(...bps), sample: rows[0].ctx ?? s, sampleCode: s });
     }
     for (const p of q(`SELECT d.SampleCODE, p.PeriodName, p.Begin, p.BeginBCAD, p.End, p.EndBCAD, p.PeriodType, sa.RefNrContext AS ctx
                        FROM TDatesPeriod d JOIN TPeriods p ON p.PeriodCODE=d.PeriodCODE JOIN TSample sa ON sa.SampleCODE=d.SampleCODE
                        WHERE d.SampleCODE IN (${ph}) AND d.PeriodCODE != '?'`, ...chunk)) {
       const a = toBP(p.Begin, p.BeginBCAD), b = toBP(p.End, p.EndBCAD);
       out.push({ kind: "period", label: p.PeriodName, olderBP: a != null && b != null ? Math.max(a, b) : a ?? b, youngerBP: a != null && b != null ? Math.min(a, b) : a ?? b,
-        sample: p.ctx ?? p.SampleCODE, detail: p.PeriodType ? `${p.PeriodType} period` : undefined });
+        sample: p.ctx ?? p.SampleCODE, sampleCode: p.SampleCODE, detail: p.PeriodType ? `${p.PeriodType} period` : undefined });
     }
   }
   return out;
@@ -168,7 +168,7 @@ export function searchTaxa(term: string) {
   const [g, s] = t.split(" ");
   const rows = s !== undefined
     ? q(`SELECT CODE AS code, FAMILY AS family, GENUS AS genus, SPECIES AS species, (SELECT COUNT(*) FROM TFossil f WHERE f.CODE=i.CODE) AS records
-         FROM "INDEX" i WHERE GENUS LIKE ? AND SPECIES LIKE ? ORDER BY records DESC LIMIT 20`, g, `${s}%`)
+         FROM "INDEX" i WHERE GENUS LIKE ? AND SPECIES LIKE ? ORDER BY (GENUS LIKE ?) DESC, records DESC LIMIT 20`, `${g}%`, `${s}%`, g)
     : q(`SELECT CODE AS code, FAMILY AS family, GENUS AS genus, SPECIES AS species, (SELECT COUNT(*) FROM TFossil f WHERE f.CODE=i.CODE) AS records
          FROM "INDEX" i WHERE GENUS LIKE ? OR SPECIES LIKE ? OR FAMILY LIKE ? ORDER BY (GENUS LIKE ?) DESC, records DESC LIMIT 20`, `${t}%`, `${t}%`, `${t}%`, `${t}%`);
   return rows;
@@ -191,7 +191,7 @@ export function taxon(code: string) {
   const synonyms = q("SELECT SynGenus || ' ' || SynSpecies AS name FROM TSynonym WHERE CODE=? LIMIT 10", code).map((r: any) => r.name);
   return {
     taxon: t, siteCount: sites.length, sampleCount: sampleCodes.length, sites, ages, ageSummary: summariseAges(ages),
-    datedSampleCount: new Set(ages.map(a => a.sample)).size,
+    datedSampleCount: new Set(ages.map(a => a.sampleCode)).size,
     habitats, mcr, biology, distribution, synonyms, lengths: q("SELECT AttribMeasure AS measure, Value AS value, AttribUnits AS units FROM TAttributes WHERE CODE=? AND AttribType='Length'", code)
   };
 }

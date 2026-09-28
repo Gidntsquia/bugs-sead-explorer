@@ -152,6 +152,12 @@ export async function siteMatches(): Promise<SiteMatch[]> {
   return out;
 }
 
+export async function matchesForBugsSite(code: string) {
+  const [matches, sites] = await Promise.all([siteMatches(), seadSiteRows()]);
+  const names = new Map(sites.map(s => [s.site_id, s.site_name]));
+  return matches.filter(m => m.bugsCode === code).map(m => ({ ...m, seadName: names.get(m.seadId) ?? null }));
+}
+
 export async function seadSites() {
   const [sites, matches] = await Promise.all([seadSiteRows(), siteMatches().catch(() => [] as SiteMatch[])]);
   const best = new Map<number, SiteMatch>();
