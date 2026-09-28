@@ -1,0 +1,1 @@
+- [Helophorus has no MCR](project_helophorus_no_mcr.md) — spec expected MCR for H. rufipes; data has none, app says so
