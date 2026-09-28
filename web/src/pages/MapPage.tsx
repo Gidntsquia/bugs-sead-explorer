@@ -33,7 +33,7 @@ export default function MapPage() {
   const seadOnly = useMemo(() => sead.data?.filter(s => !s.bugsLink) ?? EMPTY, [sead.data]);
 
   return (
-    <div className="flex h-[calc(100vh-57px)] flex-col lg:flex-row">
+    <div className="flex h-full flex-col lg:flex-row">
       <div className="relative min-h-[50vh] flex-1">
         <BaseMap className="h-full w-full">
           <Dots groups={[
@@ -47,32 +47,18 @@ export default function MapPage() {
         <div className="absolute left-14 top-3 z-[500] w-72 space-y-2">
           <SiteSearch bugs={bugs.data ?? []} sead={sead.data ?? []} onPick={s => select(s, true)} />
           <div className="rounded-lg border border-line bg-card/95 p-3 text-sm shadow">
-            <div className="mb-1 font-semibold">Show on map</div>
-            <Toggle color={COLORS.bugs} on={show.bugs} set={v => setShow({ ...show, bugs: v })} label="BugsCEP sites" n={bugs.data?.length} loading={bugs.loading} />
-            <Toggle color={COLORS.seadLinked} on={show.seadLinked} set={v => setShow({ ...show, seadLinked: v })} label="SEAD sites also in BugsCEP" n={sead.error ? undefined : seadLinked.length} loading={sead.loading} />
-            <Toggle color={COLORS.seadOnly} on={show.seadOnly} set={v => setShow({ ...show, seadOnly: v })} label="SEAD-only sites" n={sead.error ? undefined : seadOnly.length} loading={sead.loading} />
+            <Toggle color={COLORS.bugs} on={show.bugs} set={v => setShow({ ...show, bugs: v })} label="BugsCEP" n={bugs.data?.length} loading={bugs.loading} />
+            <Toggle color={COLORS.seadLinked} on={show.seadLinked} set={v => setShow({ ...show, seadLinked: v })} label="SEAD (in BugsCEP)" n={sead.error ? undefined : seadLinked.length} loading={sead.loading} />
+            <Toggle color={COLORS.seadOnly} on={show.seadOnly} set={v => setShow({ ...show, seadOnly: v })} label="SEAD only" n={sead.error ? undefined : seadOnly.length} loading={sead.loading} />
             {sead.error && <div className="mt-2"><ErrorBox error={sead.error} what="The SEAD sites" /></div>}
-            <p className="mt-2 text-xs text-muted">Each dot is a <T k="site">site</T>. Where both databases have the same place, the orange BugsCEP dot sits on top of the teal SEAD one. Click a dot for details.</p>
           </div>
         </div>
       </div>
       <aside className="h-[50vh] w-full overflow-y-auto border-t border-line bg-card p-5 lg:h-auto lg:w-[440px] lg:border-l lg:border-t-0">
-        {!sel && <Intro bugsN={bugs.data?.length} seadN={sead.data?.length} />}
+        {!sel && <div className="text-sm text-muted">Pick a <T k="site">site</T>: search above or click a dot.</div>}
         {sel?.db === "bugs" && <BugsSitePanel key={sel.code} code={sel.code} onOpenSead={id => select({ db: "sead", id }, true)} />}
         {sel?.db === "sead" && <SeadSitePanel key={sel.id} id={sel.id} onOpenBugs={code => select({ db: "bugs", code }, true)} />}
       </aside>
-    </div>
-  );
-}
-
-function Intro({ bugsN, seadN }: { bugsN?: number; seadN?: number }) {
-  return (
-    <div className="space-y-3 text-sm leading-relaxed">
-      <h2 className="font-display text-2xl font-semibold">Where the evidence comes from</h2>
-      <p>This map shows {bugsN ? fmt(bugsN) : "the"} BugsCEP sites and {seadN ? fmt(seadN) : "the"} SEAD sites that have <T k="lat_lon">coordinates</T>.</p>
-      <p><b className="text-bugs">Orange</b>: sites in BugsCEP, where fossil beetles were studied. Clicking one shows which beetles were found, how old the layers are, and what the beetles say about the landscape.</p>
-      <p><b className="text-sead">Teal</b>: sites in SEAD. The lighter teal ones are also in BugsCEP (SEAD copied BugsCEP's data). The darker ones only exist in SEAD — often Swedish archaeological sites studied for soil chemistry, pottery, tree rings or pollen.</p>
-      <p className="text-muted">Tip: the clusters show where researchers have worked, not where beetles lived. Britain is dense because BugsCEP was built there.</p>
     </div>
   );
 }

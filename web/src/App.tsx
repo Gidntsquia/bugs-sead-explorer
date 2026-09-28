@@ -1,7 +1,6 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import Home from "./pages/Home";
 import MapPage from "./pages/MapPage";
 import Species from "./pages/Species";
 import Tables from "./pages/Tables";
@@ -23,41 +22,32 @@ export function useStatus() {
 }
 
 const nav = [
-  ["/", "Home"], ["/map", "Map of sites"], ["/species", "Look up a species"], ["/tables", "Browse tables"], ["/compare", "BugsCEP vs SEAD"], ["/glossary", "Glossary"],
+  ["/map", "Map"], ["/species", "Species"], ["/tables", "Tables"], ["/compare", "Compare"], ["/glossary", "Glossary"],
 ] as const;
 
 export default function App() {
   const status = useStatus();
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-[1000] border-b border-line bg-paper/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <NavLink to="/" className="flex items-center gap-2">
-            <img src="/beetle.svg" alt="" className="h-7 w-7" />
-            <span className="font-display text-lg font-bold">Beetles &amp; Buried Time</span>
-          </NavLink>
-          <nav className="flex flex-wrap gap-1 text-sm">
-            {nav.map(([to, label]) => (
-              <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `rounded-md px-2.5 py-1.5 ${isActive ? "bg-ink text-paper" : "hover:bg-line/60"}`}>{label}</NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs">
-            <Dot ok={status?.bugs.available} label="BugsCEP" okText="loaded from local file" badText={status?.bugs.message ?? "not loaded"} />
-            <Dot ok={status?.sead.reachable} label="SEAD" okText="live connection works" badText="unreachable right now" />
-          </div>
+    <div className="flex h-full">
+      <aside className="flex w-40 shrink-0 flex-col border-r border-line bg-card sm:w-48">
+        <div className="border-b border-line px-4 py-3">
+          <span className="tab text-xs text-muted">bugscep / sead</span>
         </div>
-        {status && !status.sead.reachable && (
-          <div className="border-t border-sead/30 bg-sead-soft px-4 py-1.5 text-center text-sm text-sead">
-            SEAD can't be reached right now, so SEAD parts will show an "unreachable" message. Everything from BugsCEP still works.
-          </div>
-        )}
-        {status && !status.bugs.available && (
-          <div className="border-t border-bugs/30 bg-bugs-soft px-4 py-1.5 text-center text-sm text-bugs">{status.bugs.message}</div>
-        )}
-      </header>
-      <main className="flex-1">
+        <nav className="flex flex-1 flex-col py-1 text-sm">
+          {nav.map(([to, label]) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `border-l-2 px-4 py-2 ${isActive ? "border-ink bg-paper font-medium" : "border-transparent text-muted hover:bg-paper/60"}`}>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="border-t border-line px-4 py-2 text-xs">
+          <Dot ok={status?.bugs.available} label="BugsCEP" okText="loaded from local file" badText={status?.bugs.message ?? "not loaded"} />
+          <Dot ok={status?.sead.reachable} label="SEAD" okText="live connection works" badText="unreachable right now" />
+        </div>
+      </aside>
+      <main className="min-w-0 flex-1 overflow-y-auto">
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Navigate to="/map" replace />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/species" element={<Species />} />
           <Route path="/species/:code" element={<Species />} />
@@ -73,6 +63,12 @@ export default function App() {
 }
 
 function Dot({ ok, label, okText, badText }: { ok: boolean | undefined; label: string; okText: string; badText: string }) {
-  const c = ok === undefined ? "bg-gray-300" : ok ? "bg-green-600" : "bg-red-600";
-  return <span className="flex items-center gap-1.5" title={ok === undefined ? "checking…" : ok ? okText : badText}><span className={`h-2 w-2 rounded-full ${c}`} />{label}{ok === false && <span className="text-red-700"> offline</span>}</span>;
+  const c = ok === undefined ? "bg-gray-300" : ok ? "bg-green-700" : "bg-red-700";
+  return (
+    <div className="flex items-center gap-1.5 py-0.5" title={ok === undefined ? "checking…" : ok ? okText : badText}>
+      <span className={`h-1.5 w-1.5 rounded-full ${c}`} />
+      <span className="text-muted">{label}</span>
+      {ok === false && <span className="text-red-700">offline</span>}
+    </div>
+  );
 }

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { useApi } from "../useApi";
-import { T } from "../glossary";
 import { ErrorBox, Loading, fmt } from "../components/ui";
 
 type Db = "bugs" | "sead";
@@ -19,11 +18,7 @@ function TableLists() {
   const [onlyDescribed, setOnlyDescribed] = useState(false);
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <h1 className="font-display text-3xl font-bold">Browse the raw tables</h1>
-      <p className="mt-1 max-w-3xl text-muted">
-        Each table is a spreadsheet: click a name to open it, filter and sort its <T k="row">rows</T>. The first 10 of each database show below — search or "show all" to see every table.
-      </p>
-      <div className="mt-4 flex flex-wrap items-center gap-4">
+      <div className="mt-2 flex flex-wrap items-center gap-4">
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter tables by name or description" className="w-80 rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-ink/50" />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={onlyDescribed} onChange={e => setOnlyDescribed(e.target.checked)} /> only tables with a description</label>
       </div>
@@ -104,7 +99,7 @@ function TableRows({ db, tables, limited, onShowAll }: { db: Db; tables: (Omit<T
       </table>
       {limited && tables.length > visible.length && (
         <button onClick={onShowAll} className="block w-full border-t border-line/70 px-3 py-2 text-left text-xs text-link hover:underline">
-          Show all {tables.length} tables →
+          Show all {tables.length} tables
         </button>
       )}
     </div>
@@ -144,10 +139,6 @@ function TableView({ db, name }: { db: Db; name: string }) {
       <Link to="/tables" className="text-sm text-link hover:underline">← all tables</Link>
       <h1 className="mt-1 font-display text-3xl font-bold"><span className={`${tone}`}>{db === "bugs" ? "BugsCEP" : "SEAD"}</span> · <span className="font-mono text-2xl">{name}</span></h1>
       {d?.description && <p className="mt-1 max-w-4xl text-muted">{d.description}</p>}
-      <p className="mt-1 text-sm text-muted">
-        Click a column name to sort. Type in the boxes under the names to filter: {db === "bugs" ? "text matches anywhere in the value" : "text matches anywhere; number columns need the exact number"}.
-        Hover a column name (dotted underline) to see what it holds.
-      </p>
       {error && <div className="mt-3"><ErrorBox error={error} what={db === "sead" ? "SEAD tables" : undefined} /></div>}
       {!d && loading && <Loading what="Loading rows" />}
       {d && (

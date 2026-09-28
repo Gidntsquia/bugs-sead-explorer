@@ -18,9 +18,7 @@ export default function Species() {
   const { code } = useParams();
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <h1 className="font-display text-3xl font-bold">Look up a species</h1>
-      <p className="mt-1 text-muted">Type part of a beetle's scientific name (genus, species, or family). Suggestions show how many <T k="fossil_record">fossil records</T> each has.</p>
-      <div className="mt-4"><SpeciesSearch /></div>
+      <SpeciesSearch />
       {code ? <TaxonView key={code} code={code} /> : <Examples />}
     </div>
   );
@@ -28,18 +26,12 @@ export default function Species() {
 
 function Examples() {
   return (
-    <div className="mt-8 grid gap-4 md:grid-cols-3">
-      <Card title="Try these">
-        <ul className="space-y-1 text-sm">
-          <li><Link className="italic text-link underline" to="/species/7.005001">Helophorus rufipes</Link> — a small water-scavenger beetle found at many sites</li>
-          <li><Link className="italic text-link underline" to="/species/85.019044">Aphodius prodromus</Link> — a dung beetle, has a temperature range</li>
-          <li><Link className="italic text-link underline" to="/species/91.024002">Dryocoetinus villosus</Link> — a bark beetle of oak</li>
-          <li><Link className="italic text-link underline" to="/species/53.0200013">Prostomis mandibularis</Link> — lives in rotting wood, now rare</li>
-        </ul>
-      </Card>
-      <Card title="What you'll see"><p className="text-sm leading-relaxed">Where the beetle was found as a fossil, how old those finds are, what kind of place it lives in today, and — for about 436 species — the range of summer and winter temperatures it can live in.</p></Card>
-      <Card title="Why it matters"><p className="text-sm leading-relaxed">Because a species' needs don't change much over time, a fossil of it is a clue to the past: a dung beetle means dung (so animals), a species that needs warm summers means it was warm.</p></Card>
-    </div>
+    <ul className="mt-6 space-y-1 text-sm">
+      <li><Link className="italic text-link underline" to="/species/7.005001">Helophorus rufipes</Link></li>
+      <li><Link className="italic text-link underline" to="/species/85.019044">Aphodius prodromus</Link></li>
+      <li><Link className="italic text-link underline" to="/species/91.024002">Dryocoetinus villosus</Link></li>
+      <li><Link className="italic text-link underline" to="/species/53.0200013">Prostomis mandibularis</Link></li>
+    </ul>
   );
 }
 
@@ -241,10 +233,7 @@ function MCRChart({ m }: { m: any }) {
       <Row label="Warmest month average" a={m.TMaxLo} b={m.TMaxHi} color="#f59e0b" k="tmax" />
       <Row label="Coldest month average" a={m.TMinLo} b={m.TMinHi} color="#3b82f6" k="tmin" />
       <div className="relative h-4 text-[10px] text-muted">{[-40, -30, -20, -10, 0, 10, 20, 30].map(v => <span key={v} className="absolute -translate-x-1/2" style={{ left: x(v) }}>{v}°</span>)}</div>
-      <p className="mt-3 text-sm leading-relaxed">
-        For comparison, London today has a warmest month of about 19°C and a coldest of about 5°C. If this beetle turns up in an Ice Age layer, summers then were
-        at least {m.TMaxLo}°C on average. Summer–winter difference it tolerates: {m.TRangeLo}–{m.TRangeHi}°C.
-      </p>
+      <p className="mt-3 text-sm text-muted">Summer–winter tolerance: {m.TRangeLo}–{m.TRangeHi}°C.</p>
     </div>
   );
 }

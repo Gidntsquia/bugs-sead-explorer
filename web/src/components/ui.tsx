@@ -17,7 +17,7 @@ export function Expandable({ label, children, className = "" }: { label: string;
 
 export function Card({ title, subtitle, children, className = "", right }: { title?: ReactNode; subtitle?: ReactNode; children: ReactNode; className?: string; right?: ReactNode }) {
   return (
-    <section className={`rounded-xl border border-line bg-card p-4 shadow-sm ${className}`}>
+    <section className={`border border-line bg-card p-4 ${className}`}>
       {(title || right) && (
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>
@@ -35,8 +35,8 @@ export function Card({ title, subtitle, children, className = "", right }: { tit
 export function Stat({ label, value, hint, tone }: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: "bugs" | "sead" }) {
   const c = tone === "bugs" ? "text-bugs" : tone === "sead" ? "text-sead" : "text-ink";
   return (
-    <div className="rounded-lg border border-line bg-card px-3 py-2">
-      <div className={`font-display text-2xl font-semibold ${c}`}>{typeof value === "number" ? value.toLocaleString("en-GB") : value}</div>
+    <div className="border-l-2 border-line pl-2.5">
+      <div className={`tab font-display text-2xl font-semibold ${c}`}>{typeof value === "number" ? value.toLocaleString("en-GB") : value}</div>
       <div className="text-sm text-ink">{label}</div>
       {hint && <div className="mt-0.5 text-xs text-muted">{hint}</div>}
     </div>

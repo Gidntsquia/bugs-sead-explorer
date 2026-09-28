@@ -5,8 +5,7 @@ A small web app for looking around two databases of evidence about past environm
 - **BugsCEP** — fossil beetles from ~1,400 sites, plus what each species needs to live today. Read from a local SQLite file.
 - **SEAD** — the Strategic Environmental Archaeology Database (Umeå University). Read live from its public API at `https://browser.sead.se/postgrest`.
 
-It has a home page that explains both, a map of sites, a species lookup, a raw table browser, a BugsCEP-vs-SEAD comparison and a glossary.
-Every technical word has a hover explanation.
+It opens straight onto a map of sites. Species lookup, raw table browser, BugsCEP-vs-SEAD comparison and a glossary are the other views, reached from the sidebar. Every technical word has a hover explanation.
 
 ## 1. Get the BugsCEP data (once)
 

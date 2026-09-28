@@ -14,13 +14,7 @@ export default function Compare() {
   const b = bugs.data, c = cmp.data;
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <h1 className="font-display text-3xl font-bold">BugsCEP vs SEAD</h1>
-      <p className="mt-1 max-w-3xl text-muted">
-        BugsCEP is one specialist database about fossil beetles. SEAD is a bigger store of many kinds of evidence, and BugsCEP's data was copied into it.
-        This page shows what each holds, how much of SEAD came from BugsCEP, and what SEAD adds on top.
-      </p>
-
-      <div className="mt-6 grid gap-5 md:grid-cols-2">
+      <div className="mt-2 grid gap-5 md:grid-cols-2">
         <Card title={<span className="text-bugs">BugsCEP (local file)</span>}>
           {bugs.error ? <ErrorBox error={bugs.error} /> : !b ? <Loading /> : (
             <div className="grid grid-cols-2 gap-2">
@@ -32,7 +26,7 @@ export default function Compare() {
               <Stat tone="bugs" label={<>species with an <T k="mcr">MCR</T></>} value={b.taxaWithMCR} />
             </div>
           )}
-          <p className="mt-3 text-sm text-muted">Mostly beetles. Kinds of evidence: insect counts, plus dates for the samples (<T k="radiocarbon">radiocarbon</T>, <T k="calendar_date">calendar</T>, <T k="period_date">period</T>), and a description of every species' <T k="habitat">habitat</T>.</p>
+          <p className="mt-3 text-sm text-muted">Insect counts, sample <T k="radiocarbon">dates</T>, species <T k="habitat">habitats</T>.</p>
         </Card>
         <Card title={<span className="text-sead">SEAD (live from the internet)</span>}>
           {cmp.error ? <ErrorBox error={cmp.error} what="The SEAD side of this comparison" /> : !c ? <Loading what="Asking SEAD (the first time takes ~20 seconds; after that it is saved)" /> : (
@@ -45,15 +39,15 @@ export default function Compare() {
               <Stat tone="sead" label={<T k="analysis_entity">analyses</T>} value={c.sead.analysisEntities} />
             </div>
           )}
-          <p className="mt-3 text-sm text-muted">Many kinds of evidence from several labs: beetles, pollen, seeds, <T k="dendrochronology">tree rings</T>, pottery, soil chemistry, dates.</p>
+          <p className="mt-3 text-sm text-muted">Beetles, pollen, seeds, <T k="dendrochronology">tree rings</T>, pottery, soil chemistry, dates.</p>
         </Card>
       </div>
 
       {c && (
         <>
-          <h2 className="mt-10 font-display text-2xl font-semibold">How much of SEAD came from BugsCEP?</h2>
+          <h2 className="mt-10 font-display text-2xl font-semibold">Origin of SEAD's datasets</h2>
           <div className="mt-3 grid gap-5 lg:grid-cols-[1fr_1.3fr]">
-            <Card title="Where SEAD's datasets came from" subtitle={<>Each <T k="dataset">dataset</T> in SEAD is marked with its <T k="source">source</T>.</>}>
+            <Card title="By source">
               <div className="h-64">
                 <ResponsiveContainer>
                   <PieChart>
@@ -75,28 +69,24 @@ export default function Compare() {
                 ))}
               </ul>
             </Card>
-            <Card title="The short answer">
-              <p className="text-lg leading-relaxed">
-                <b className="text-bugs">{fmt(c.bugsOriginDatasets)}</b> of SEAD's {fmt(c.sead.datasets)} datasets ({Math.round((100 * c.bugsOriginDatasets) / c.sead.datasets)}%) came from BugsCEP.
+            <Card title="Totals">
+              <p className="text-lg">
+                <b className="text-bugs">{fmt(c.bugsOriginDatasets)}</b> / {fmt(c.sead.datasets)} datasets ({Math.round((100 * c.bugsOriginDatasets) / c.sead.datasets)}%) from BugsCEP.
               </p>
-              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed">
-                <li><b>Sites:</b> {fmt(c.matching.seadSitesLinked)} SEAD sites can be tied to {fmt(c.matching.bugsSitesLinked)} BugsCEP sites (some BugsCEP sites were split into several SEAD sites). The other <b>{fmt(c.matching.seadOnlySites)}</b> SEAD sites are not in BugsCEP.</li>
-                <li><b>Species names:</b> SEAD lists {fmt(c.taxa.seadDistinctNames)} distinct names; {fmt(c.taxa.shared)} of BugsCEP's {fmt(c.taxa.bugsNames)} names are among them. So SEAD adds about {fmt(c.taxa.seadDistinctNames - c.taxa.shared)} names that BugsCEP doesn't have.</li>
-                <li><b>Most of SEAD by count is new:</b> the Lund tree-ring lab alone supplied {fmt(c.sources.find((s: any) => s.id === 10)?.datasets)} datasets, more than twice BugsCEP's contribution.</li>
+              <ul className="mt-3 space-y-2 text-sm">
+                <li><b>Sites:</b> {fmt(c.matching.seadSitesLinked)} SEAD ↔ {fmt(c.matching.bugsSitesLinked)} BugsCEP · <b>{fmt(c.matching.seadOnlySites)}</b> SEAD-only</li>
+                <li><b>Taxon names:</b> {fmt(c.taxa.shared)} shared / {fmt(c.taxa.seadDistinctNames)} SEAD, {fmt(c.taxa.bugsNames)} BugsCEP</li>
+                <li><b>Largest non-BugsCEP source:</b> Lund tree-ring lab, {fmt(c.sources.find((s: any) => s.id === 10)?.datasets)} datasets</li>
               </ul>
             </Card>
           </div>
 
-          <h2 className="mt-10 font-display text-2xl font-semibold">What SEAD adds: types of analysis</h2>
-          <p className="mt-1 max-w-3xl text-sm text-muted">Every dataset uses one <T k="method">analysis type</T>. Orange = datasets copied from BugsCEP, teal = from SEAD's other sources. Hover a bar for what the analysis is.</p>
+          <h2 className="mt-10 font-display text-2xl font-semibold">Analysis <T k="method">types</T></h2>
           <Card className="mt-3">
             <MethodsChart methods={c.methods.slice(0, 14)} />
           </Card>
 
-          <h2 className="mt-10 font-display text-2xl font-semibold">How sites were matched between the two</h2>
-          <p className="mt-1 max-w-3xl text-sm text-muted">
-            The two databases don't share site IDs, so the app links them in three ways, from most to least trustworthy. Every link shown on the map says which way it was made.
-          </p>
+          <h2 className="mt-10 font-display text-2xl font-semibold">Site matching</h2>
           <div className="mt-3 overflow-hidden rounded-xl border border-line bg-card">
             <table className="w-full text-sm">
               <thead className="bg-paper text-left text-xs text-muted"><tr><th className="px-3 py-2 font-medium">How</th><th className="px-3 py-2 font-medium">How reliable</th><th className="px-3 py-2 text-right font-medium">SEAD sites</th><th className="px-3 py-2 text-right font-medium">BugsCEP sites</th></tr></thead>
@@ -113,7 +103,7 @@ export default function Compare() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-muted">SEAD numbers fetched live{c.cachedAt ? ` and saved ${new Date(c.cachedAt).toLocaleString()}` : ""}. <Link to="/map" className="underline">See the matches on the map →</Link></p>
+          <p className="mt-2 text-xs text-muted">Fetched live{c.cachedAt ? `, saved ${new Date(c.cachedAt).toLocaleString()}` : ""}. <Link to="/map" className="underline">See on the map</Link></p>
         </>
       )}
     </div>
@@ -121,9 +111,9 @@ export default function Compare() {
 }
 
 const HOW: Record<string, { title: string; text: string }> = {
-  "sample-code": { title: "Same sample codes", text: "SEAD kept BugsCEP's original sample codes (SAMP…) when it copied the data. If a SEAD site's samples carry a BugsCEP sample code, we know exactly which BugsCEP site it is." },
-  "name+place": { title: "Same name, same place", text: "No sample code, but the site name is the same (ignoring case and punctuation) and the two points are within 2 km." },
-  "place-only": { title: "Same place only", text: "Different names but the points are within 200 m. Could be the same site, could be neighbours: check by hand." },
+  "sample-code": { title: "Same sample codes", text: "shared BugsCEP SAMP… code" },
+  "name+place": { title: "Same name, same place", text: "name match, within 2 km" },
+  "place-only": { title: "Same place only", text: "within 200 m, names differ" },
 };
 
 function Reliability({ r }: { r: "high" | "medium" | "low" }) {
