@@ -21,8 +21,7 @@ function TableLists() {
     <div className="mx-auto max-w-6xl px-4 py-6">
       <h1 className="font-display text-3xl font-bold">Browse the raw tables</h1>
       <p className="mt-1 max-w-3xl text-muted">
-        A database is a set of tables. Each table is like a spreadsheet: every <T k="row">row</T> is one record (a site, a sample, a fossil find) and every <T k="column">column</T> is one
-        piece of information about it. Tables point at each other with codes, e.g. a fossil find names its sample's code, and the sample names its site's code.
+        Each table is a spreadsheet: click a name to open it, filter and sort its <T k="row">rows</T>. The first 10 of each database show below — search or "show all" to see every table.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter tables by name or description" className="w-80 rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-ink/50" />
@@ -40,13 +39,14 @@ const matchQ = (t: TableInfo, q: string) => !q.trim() || `${t.name} ${t.descript
 
 function BugsList({ q, onlyDescribed }: { q: string; onlyDescribed: boolean }) {
   const { data, error, loading } = useApi<TableInfo[]>("bugs/tables");
+  const [expanded, setExpanded] = useState(false);
   const shown = (data ?? []).filter(t => matchQ(t, q) && (!onlyDescribed || t.description));
   return (
     <section>
       <h2 className="font-display text-xl font-semibold text-bugs">BugsCEP <span className="text-sm font-normal text-muted">{data && `${data.length} tables, read from the local file`}</span></h2>
       {loading && <Loading what="Reading BugsCEP tables" />}
       {error && <ErrorBox error={error} />}
-      <TableRows db="bugs" tables={shown} />
+      <TableRows db="bugs" tables={shown} limited={!q.trim() && !expanded} onShowAll={() => setExpanded(true)} />
     </section>
   );
 }
@@ -54,11 +54,13 @@ function BugsList({ q, onlyDescribed }: { q: string; onlyDescribed: boolean }) {
 function SeadList({ q, onlyDescribed }: { q: string; onlyDescribed: boolean }) {
   const { data, error, loading } = useApi<TableInfo[]>("sead/tables");
   const [counts, setCounts] = useState<Record<string, number | "err">>({});
+  const [expanded, setExpanded] = useState(false);
   // Row counts are one small request per table; fetched two at a time and cached by the server.
+  // Only counted for the tables actually shown, so collapsing the list also cuts requests.
+  const shownNames = useMemo(() => (data ?? []).filter(t => matchQ(t, q) && (!onlyDescribed || t.description)).slice(0, expanded || q.trim() ? undefined : 10).map(t => t.name), [data, q, onlyDescribed, expanded]);
   useEffect(() => {
-    if (!data) return;
     const ctl = new AbortController();
-    const queue = [...data.map(t => t.name)];
+    const queue = shownNames.filter(n => counts[n] === undefined);
     const worker = async () => {
       while (queue.length && !ctl.signal.aborted) {
         const n = queue.shift()!;
@@ -68,27 +70,28 @@ function SeadList({ q, onlyDescribed }: { q: string; onlyDescribed: boolean }) {
     };
     void Promise.all([worker(), worker()]);
     return () => ctl.abort();
-  }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownNames.join(",")]);
   const shown = (data ?? []).filter(t => matchQ(t, q) && (!onlyDescribed || t.description)).map(t => ({ ...t, rows: counts[t.name] }));
-  const done = Object.keys(counts).length;
   return (
     <section>
-      <h2 className="font-display text-xl font-semibold text-sead">SEAD <span className="text-sm font-normal text-muted">{data && `${data.length} tables, read live${done < data.length ? ` · counting rows ${done}/${data.length}` : ""}`}</span></h2>
+      <h2 className="font-display text-xl font-semibold text-sead">SEAD <span className="text-sm font-normal text-muted">{data && `${data.length} tables, read live`}</span></h2>
       {loading && <Loading what="Asking SEAD for its table list" />}
       {error && <ErrorBox error={error} what="The SEAD table list" />}
-      <TableRows db="sead" tables={shown as any} />
+      <TableRows db="sead" tables={shown as any} limited={!q.trim() && !expanded} onShowAll={() => setExpanded(true)} />
     </section>
   );
 }
 
-function TableRows({ db, tables }: { db: Db; tables: (Omit<TableInfo, "rows"> & { rows?: number | "err" })[] }) {
+function TableRows({ db, tables, limited, onShowAll }: { db: Db; tables: (Omit<TableInfo, "rows"> & { rows?: number | "err" })[]; limited?: boolean; onShowAll?: () => void }) {
   if (!tables.length) return null;
+  const visible = limited ? tables.slice(0, 10) : tables;
   return (
     <div className="mt-2 overflow-hidden rounded-xl border border-line bg-card">
       <table className="w-full text-sm">
         <thead className="bg-paper text-left text-xs text-muted"><tr><th className="px-3 py-2 font-medium">Table</th><th className="px-3 py-2 text-right font-medium">Rows</th></tr></thead>
         <tbody>
-          {tables.map(t => (
+          {visible.map(t => (
             <tr key={t.name} className="border-t border-line/70 align-top">
               <td className="px-3 py-1.5">
                 <Link to={`/tables/${db}/${encodeURIComponent(t.name)}`} className="font-mono text-[13px] text-link hover:underline">{t.name}</Link>
@@ -99,6 +102,11 @@ function TableRows({ db, tables }: { db: Db; tables: (Omit<TableInfo, "rows"> & 
           ))}
         </tbody>
       </table>
+      {limited && tables.length > visible.length && (
+        <button onClick={onShowAll} className="block w-full border-t border-line/70 px-3 py-2 text-left text-xs text-link hover:underline">
+          Show all {tables.length} tables →
+        </button>
+      )}
     </div>
   );
 }

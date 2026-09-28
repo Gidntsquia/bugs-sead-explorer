@@ -8,7 +8,7 @@ import { useApi } from "../useApi";
 import { T } from "../glossary";
 import { BaseMap } from "../components/BaseMap";
 import { AgeList, type AgeItem } from "../components/Ages";
-import { Card, ErrorBox, Loading, Missing, Stat, fmt } from "../components/ui";
+import { Card, ErrorBox, Expandable, Loading, Missing, Stat, fmt } from "../components/ui";
 import { AGE_BINS, describeRange, yearsAgo } from "../ages";
 
 type Suggestion = { code: number; family: string; genus: string; species: string; records: number };
@@ -119,11 +119,11 @@ function TaxonView({ code }: { code: string }) {
           {d.sites.length ? (
             <>
               <div className="h-80 overflow-hidden rounded-lg"><SitesMap sites={d.sites} /></div>
-              <details className="mt-2 text-sm"><summary className="cursor-pointer text-muted">List of {d.sites.length} sites</summary>
+              <Expandable label={`List of ${d.sites.length} sites`}>
                 <table className="mt-1 w-full"><tbody>{d.sites.map((s: any) => (
                   <tr key={s.code} className="border-t border-line/60"><td className="py-0.5"><Link className="text-link hover:underline" to={`/map?bugs=${s.code}`}>{s.name}</Link> <span className="text-xs text-muted">{s.country}</span></td><td className="text-right tabular-nums">{s.individuals} ind. / {s.samples} samples</td></tr>
                 ))}</tbody></table>
-              </details>
+              </Expandable>
             </>
           ) : <Missing>This taxon is in BugsCEP's species list but has never been recorded as a fossil at any site.</Missing>}
         </Card>
@@ -141,14 +141,14 @@ function TaxonView({ code }: { code: string }) {
             </ul>
           ) : <Missing>No habitat group is recorded for this taxon in BugsCEP.</Missing>}
           {d.distribution.length > 0 && (
-            <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Modern distribution notes ({d.distribution.length})</summary>
+            <Expandable label={`Modern distribution notes (${d.distribution.length})`}>
               <ul className="mt-1 space-y-1">{d.distribution.map((x: any, i: number) => <li key={i}><span className="text-muted">{x.ref}:</span> {x.text}</li>)}</ul>
-            </details>
+            </Expandable>
           )}
           {d.biology.length > 0 && (
-            <details className="mt-2 text-sm"><summary className="cursor-pointer font-medium">How it lives — notes from the literature ({d.biology.length})</summary>
+            <Expandable label={`How it lives — notes from the literature (${d.biology.length})`}>
               <ul className="mt-1 space-y-1">{d.biology.map((x: any, i: number) => <li key={i}><span className="text-muted">{x.ref}:</span> {x.text}</li>)}</ul>
-            </details>
+            </Expandable>
           )}
           {d.lengths.length > 0 && <p className="mt-2 text-sm text-muted">Body length: {d.lengths.map((l: any) => `${l.measure} ${Math.round(Number(l.value) * 10) / 10} ${l.units}`).join(", ")}</p>}
         </Card>
@@ -220,7 +220,7 @@ function WhenChart({ ages }: { ages: AgeItem[] }) {
         </ResponsiveContainer>
       </div>
       <p className="text-xs text-muted">Years ago (k = thousand). The last Ice Age ended about 11,700 years ago; everything after is the <T k="holocene">Holocene</T>.</p>
-      <details className="mt-2 text-sm"><summary className="cursor-pointer font-medium">All dates ({ages.length})</summary><AgeList ages={ages} max={12} /></details>
+      <Expandable label={`All dates (${ages.length})`}><AgeList ages={ages} max={12} /></Expandable>
     </>
   );
 }

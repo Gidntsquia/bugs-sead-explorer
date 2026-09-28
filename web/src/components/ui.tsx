@@ -1,5 +1,19 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ApiError } from "../api";
+
+/** Like <details>, but children are only mounted when open — so a collapsed
+ *  section adds one button to the page, not a hidden table full of links. */
+export function Expandable({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={className}>
+      <button onClick={() => setOpen(o => !o)} className="mt-2 text-sm font-medium text-link hover:underline">
+        {open ? "▾ " : "▸ "}{label}
+      </button>
+      {open && <div className="mt-1 text-sm">{children}</div>}
+    </div>
+  );
+}
 
 export function Card({ title, subtitle, children, className = "", right }: { title?: ReactNode; subtitle?: ReactNode; children: ReactNode; className?: string; right?: ReactNode }) {
   return (
