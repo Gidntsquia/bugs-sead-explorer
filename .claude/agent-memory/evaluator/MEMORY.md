@@ -1,0 +1,1 @@
+- [Judges by curiosity](user_judges_by_curiosity.md) — Jaxon wants a real redesign, "just the data, no fluff"; rejected rounds 1–2; round 4 (analysis + 3D) accepted on all counts
