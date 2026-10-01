@@ -32,6 +32,6 @@
 - `three` and `@types/three` are dependencies (added this round).
 
 ## Time machine (round 5)
-- Page `web/src/pages/TimeMachine.tsx`; routes `bugs/timemachine?site=` and `bugs/timemachine/sites` in `server/bugs.ts`. Slice/MCR/ghost logic is in `shared/timemachine.ts` (used by server for the curve and by the page for the slider; tests: `bun test shared`).
+- Page `web/src/pages/TimeMachine.tsx`; routes `bugs/timemachine?site=` and `bugs/timemachine/sites` in `server/bugs.ts`. Slice/MCR/ghost logic is in `shared/timemachine.ts` (tests: `bun test shared`). The page is picture-first (round 6): a sample strip (bars keyed by SampleCODE, linear BP axis, no interpolation across gaps), a slider whose stops are every range boundary and midpoint of the site's samples (`?year=` snaps to the nearest stop), a thermometer glyph and a tile grid. The server's `curve` is no longer used by the page. One tint ramp (`tint()`) is used everywhere.
 - Per sample, a `TDatesPeriod` range is dropped if the sample has radiocarbon/calendar dates; otherwise broad period labels (e.g. Llanilid's 10,000-13,500 "Late Glacial") put every sample in every slice. Multiple dates on a sample are a set union.
 - With many species the strict MCR intersection collapses to a point (Llanilid ~13 C) or is empty, so many slices show the near-miss line.
