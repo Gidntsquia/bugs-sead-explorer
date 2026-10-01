@@ -387,3 +387,59 @@ export function bugsPoints3D() {
   }));
   return { points, counts: { total: points.length, dated: points.filter(p => p.ageBP != null).length, withDepth: points.filter(p => p.depth != null).length } };
 }
+
+// ---------- time machine ----------
+import { estimate, sliceAt, type Mcr, type TMSample } from "../shared/timemachine";
+
+const DATED_SAMPLES_SQL = `SELECT SampleCODE FROM TDatesRadio WHERE Date IS NOT NULL
+  UNION SELECT SampleCODE FROM TDatesCalendar WHERE Date IS NOT NULL AND BCADBP IS NOT NULL
+  UNION SELECT d.SampleCODE FROM TDatesPeriod d JOIN TPeriods p ON p.PeriodCODE=d.PeriodCODE WHERE d.PeriodCODE != '?' AND p.Begin IS NOT NULL`;
+
+let tmSites: any[] | null = null;
+export function bugsTimeMachineSites() {
+  return (tmSites ??= q(`SELECT s.SiteCODE AS code, s.SiteName AS name, s.Country AS country, s.Region AS region, COUNT(*) AS dated
+                         FROM TSample sa JOIN TSite s ON s.SiteCODE=sa.SiteCODE WHERE sa.SampleCODE IN (${DATED_SAMPLES_SQL})
+                         GROUP BY s.SiteCODE ORDER BY s.SiteName`));
+}
+
+export function bugsTimeMachine(siteCode: string) {
+  const site = one(`SELECT SiteCODE AS code, SiteName AS name, Region AS region, Country AS country, LatDD AS lat, LongDD AS lon FROM TSite WHERE SiteCODE=?`, siteCode);
+  if (!site) throw new HttpError(404, `No BugsCEP site ${siteCode}`);
+  const all = q<any>("SELECT SampleCODE AS code, ZorDepthTop AS depthTop, ZorDepthBot AS depthBot FROM TSample WHERE SiteCODE=? ORDER BY SampleCODE", siteCode);
+  const items = agesForSamples(all.map(s => s.code)).filter(i => i.sampleCode && i.olderBP != null && i.youngerBP != null);
+  const byS = new Map<string, any[]>();
+  for (const i of items) byS.set(i.sampleCode!, [...(byS.get(i.sampleCode!) ?? []), i]);
+  // A broad period label (e.g. "Late Glacial") would swamp precise dates, so it is only used when a sample has nothing finer.
+  for (const [k, v] of byS) if (v.some(i => i.kind !== "period")) byS.set(k, v.filter(i => i.kind !== "period"));
+  const taxaBy = new Map<string, { code: string; n: number }[]>();
+  for (const r of q<any>(`SELECT f.SampleCODE AS s, f.CODE AS code, SUM(f.Abundance) AS n FROM TFossil f JOIN TSample sa ON sa.SampleCODE=f.SampleCODE WHERE sa.SiteCODE=? GROUP BY f.SampleCODE, f.CODE`, siteCode))
+    taxaBy.set(r.s, [...(taxaBy.get(r.s) ?? []), { code: r.code, n: r.n ?? 0 }]);
+  const samples: TMSample[] = all.filter(s => byS.has(s.code)).map(s => ({
+    ...s, taxa: taxaBy.get(s.code) ?? [],
+    ranges: byS.get(s.code)!.map(i => ({ kind: i.kind, label: i.label, detail: i.detail, older: i.olderBP, younger: i.youngerBP })),
+  }));
+  const taxonCodes = [...new Set(samples.flatMap(s => s.taxa.map(t => t.code)))];
+  const taxa: Record<string, { name: string; family: string }> = {};
+  const mcr: Record<string, Mcr> = {};
+  const distrib: Record<string, string> = {};
+  for (let i = 0; i < taxonCodes.length; i += 500) {
+    const chunk = taxonCodes.slice(i, i + 500), ph = chunk.map(() => "?").join(",");
+    for (const r of q<any>(`SELECT CODE, FAMILY, GENUS, SPECIES FROM "INDEX" WHERE CODE IN (${ph})`, ...chunk)) taxa[r.CODE] = { name: `${r.GENUS} ${r.SPECIES}`.trim(), family: r.FAMILY };
+    for (const r of q<any>(`SELECT CODE, TMaxLo, TMaxHi, TRangeLo, TRangeHi FROM TMCRSummaryData WHERE CODE IN (${ph})`, ...chunk))
+      if ([r.TMaxLo, r.TMaxHi, r.TRangeLo, r.TRangeHi].every(v => v != null)) mcr[r.CODE] = { tMaxLo: r.TMaxLo, tMaxHi: r.TMaxHi, tRangeLo: r.TRangeLo, tRangeHi: r.TRangeHi };
+    for (const r of q<any>(`SELECT CODE, Data FROM TDistrib WHERE CODE IN (${ph}) AND Data IS NOT NULL`, ...chunk))
+      distrib[r.CODE] = distrib[r.CODE] ? `${distrib[r.CODE]} ${r.Data}` : r.Data;
+  }
+  const bounds = [...new Set(samples.flatMap(s => s.ranges.flatMap(r => [r.older, r.younger])))].sort((a, b) => b - a);
+  const years = bounds.length > 200 ? bounds.filter((_, i) => i % Math.ceil(bounds.length / 200) === 0 || i === bounds.length - 1) : bounds;
+  const name = (c: string) => taxa[c]?.name ?? c;
+  const curve = years.map(year => {
+    const sl = sliceAt(year, samples);
+    const e = estimate(sl.taxa.map(t => t.code).filter(c => mcr[c]), mcr, name);
+    return { year, samples: sl.samples.length, n: e.n, status: e.status,
+      summer: e.status === "ok" ? e.summer : null, winter: e.status === "ok" ? e.winter : null,
+      nearSummer: e.status === "nearmiss" && e.basis === "summer" ? e.agree : null, k: e.status === "nearmiss" ? e.k : null };
+  });
+  return { site, samples, undated: all.length - samples.length, taxa, mcr, distrib, curve,
+    oldestBP: bounds[0] ?? null, youngestBP: bounds[bounds.length - 1] ?? null };
+}

@@ -8,6 +8,7 @@ import Compare from "./pages/Compare";
 import Glossary from "./pages/Glossary";
 import Analyze from "./pages/Analyze";
 import View3D from "./pages/View3D";
+import TimeMachine from "./pages/TimeMachine";
 
 type Status = { bugs: { available: boolean; message: string | null }; sead: { reachable: boolean; message?: string } };
 
@@ -24,7 +25,7 @@ export function useStatus() {
 }
 
 const nav = [
-  ["/map", "Map"], ["/species", "Species"], ["/analyze", "Analyze"], ["/view3d", "3D"], ["/tables", "Tables"], ["/compare", "Compare"], ["/glossary", "Glossary"],
+  ["/map", "Map"], ["/species", "Species"], ["/analyze", "Analyze"], ["/view3d", "3D"], ["/timemachine", "Time machine"], ["/tables", "Tables"], ["/compare", "Compare"], ["/glossary", "Glossary"],
 ] as const;
 
 export default function App() {
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/species/:code" element={<Species />} />
           <Route path="/analyze" element={<Analyze />} />
           <Route path="/view3d" element={<View3D />} />
+          <Route path="/timemachine" element={<TimeMachine />} />
           <Route path="/tables" element={<Tables />} />
           <Route path="/tables/:db/:name" element={<Tables />} />
           <Route path="/compare" element={<Compare />} />

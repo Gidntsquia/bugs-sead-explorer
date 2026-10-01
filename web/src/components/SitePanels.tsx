@@ -20,7 +20,7 @@ export function BugsSitePanel({ code, onOpenSead }: { code: string; onOpenSead: 
         <h2 className="mt-1 font-display text-2xl font-semibold leading-tight">{s.name}</h2>
         <p className="text-sm text-muted">{[s.region, s.country].filter(Boolean).join(", ")}{s.altitude != null && ` · ${s.altitude} m above sea level`}</p>
         {s.interpretation && <p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{s.interpretation}</p>}
-        <p className="mt-1 text-sm"><Link to={`/analyze?tab=habitat&site=${encodeURIComponent(code)}`} className="text-link hover:underline">See its habitat mix</Link> · <Link to={`/view3d?site=${encodeURIComponent(code)}`} className="text-link hover:underline">find it in 3D</Link></p>
+        <p className="mt-1 text-sm"><Link to={`/analyze?tab=habitat&site=${encodeURIComponent(code)}`} className="text-link hover:underline">See its habitat mix</Link> · <Link to={`/view3d?site=${encodeURIComponent(code)}`} className="text-link hover:underline">find it in 3D</Link> · <Link to={`/timemachine?site=${encodeURIComponent(code)}`} className="text-link hover:underline">Time machine</Link></p>
       </div>
 
       <SeadCrossLink code={code} onOpenSead={onOpenSead} />

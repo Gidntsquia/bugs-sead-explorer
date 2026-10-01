@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { config } from "./config";
-import { HttpError, openBugs, bugsError, bugsSummary, bugsSites, bugsSite, searchTaxa, taxon, bugsTables, bugsTable, bugsAvailable, bugsFilters, bugsAnalyze, bugsTimeSeries, bugsHabitatMix, bugsPoints3D } from "./bugs";
+import { HttpError, openBugs, bugsError, bugsSummary, bugsSites, bugsSite, searchTaxa, taxon, bugsTables, bugsTable, bugsAvailable, bugsFilters, bugsAnalyze, bugsTimeSeries, bugsHabitatMix, bugsPoints3D, bugsTimeMachine, bugsTimeMachineSites } from "./bugs";
 import { seadStatus, matchesForBugsSite, seadSites, seadSite, compare, seadTables, seadTableCount, seadTable } from "./sead";
 
 openBugs();
@@ -27,6 +27,8 @@ const routes: [RegExp, Handler][] = [
   )],
   [/^\/api\/bugs\/habitatmix$/, (_, u) => bugsHabitatMix((u.searchParams.get("sites") ?? "").split(",").map(s => s.trim()).filter(Boolean))],
   [/^\/api\/bugs\/points3d$/, () => bugsPoints3D()],
+  [/^\/api\/bugs\/timemachine\/sites$/, () => bugsTimeMachineSites()],
+  [/^\/api\/bugs\/timemachine$/, (_, u) => bugsTimeMachine(u.searchParams.get("site") ?? "")],
   [/^\/api\/sead\/sites$/, () => seadSites()],
   [/^\/api\/sead\/site\/(\d+)$/, m => seadSite(Number(m[1]))],
   [/^\/api\/sead\/matches\/([^/]+)$/, m => matchesForBugsSite(decodeURIComponent(m[1]))],

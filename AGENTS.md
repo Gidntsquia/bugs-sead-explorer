@@ -30,3 +30,8 @@
 - 3D view renders points as a single `THREE.InstancedMesh`, not one `THREE.Mesh` per point — 9,000+ individual meshes hangs headless (software/swiftshader) WebGL rendering. Picking uses `raycaster.intersectObjects(meshes)[0].instanceId` to index back into the points array (no per-object `userData` on an InstancedMesh hit). Renderer uses `antialias: false`, `powerPreference: "low-power"`, `setPixelRatio(1)` to keep frame cost low.
 - Samples with no recorded depth are placed on a fixed floor plane (`NO_DEPTH_Y`), not hidden or given a fabricated depth.
 - `three` and `@types/three` are dependencies (added this round).
+
+## Time machine (round 5)
+- Page `web/src/pages/TimeMachine.tsx`; routes `bugs/timemachine?site=` and `bugs/timemachine/sites` in `server/bugs.ts`. Slice/MCR/ghost logic is in `shared/timemachine.ts` (used by server for the curve and by the page for the slider; tests: `bun test shared`).
+- Per sample, a `TDatesPeriod` range is dropped if the sample has radiocarbon/calendar dates; otherwise broad period labels (e.g. Llanilid's 10,000-13,500 "Late Glacial") put every sample in every slice. Multiple dates on a sample are a set union.
+- With many species the strict MCR intersection collapses to a point (Llanilid ~13 C) or is empty, so many slices show the near-miss line.
