@@ -1,117 +1,56 @@
-# Beetles & Buried Time — a BugsCEP + SEAD explorer
+# Beetles & Buried Time 🪲
 
-A small web app for looking around two databases of evidence about past environments:
+<!-- TODO: screenshot or gif of the Time machine page (docs/time-machine.png) -->
 
-- **BugsCEP** — fossil beetles from ~1,400 sites, plus what each species needs to live today. Read from a local SQLite file.
-- **SEAD** — the Strategic Environmental Archaeology Database (Umeå University). Read live from its public API at `https://browser.sead.se/postgrest`.
+A web app for exploring fossil beetle records from [BugsCEP](https://www.bugscep.com) (~1,400 sites, plus what each species needs to live today) and the [Strategic Environmental Archaeology Database](https://www.sead.se) (SEAD) at Umeå University. BugsCEP is read from a local SQLite file and SEAD is queried live from its public API. The app opens on a map of sites, and every technical word has a hover explanation.
 
-It opens straight onto a map of sites. Species lookup, an analysis page (filter/chart, change over time, habitat mix), a 3D view of sites/samples/ages, a raw table browser, BugsCEP-vs-SEAD comparison and a glossary are the other views, reached from the sidebar. Every technical word has a hover explanation.
+The Time machine picks a dated site and tells you whether its summers were warmer or colder than today, using the temperatures the beetles in each sample can live in.
 
-### Analyses
+## Quickstart 🚀
 
-- **Filter and chart** (`/analyze?tab=filter`) — filter by country, period, habitat group or species; site/sample/individual/taxa counts and charts (by family, habitat, period) update live; a list of matching sites links back to the map. Clearing filters returns to all 1,425 BugsCEP sites.
-- **Change over time** (`/analyze?tab=time`) — pick a species, habitat group or country and see individuals/samples across dated samples, binned by year range (100–1000 years, your choice). Each dated sample gets one age (calendar date, else radiocarbon/radiometric midpoint, else period midpoint); undated samples are excluded and counted separately. Empty bins are dropped and the chart axis is spaced by bin order, not literal years, so one far outlier can't squash the rest — check a bin's label for its real date range.
-- **Habitat mix** (`/analyze?tab=habitat`) — for a site (or two, side by side), see the share of beetle individuals per BugsCEP habitat group, per sample and overall. Individuals with no habitat code are shown as their own explicit slice, not dropped.
-- **3D view** (`/view3d`) — every dated (or undated-but-located) sample as a point in 3D: x/y from site coordinates, height from age (older = higher, BP), colour from dominant habitat. Drag to orbit, scroll to zoom, WASD to fly, click a point to open its record. Samples with no recorded depth sit on a visible floor plane rather than being hidden or given a made-up depth.
-- **Time machine** (`/timemachine?site=SITE…`) — pick a dated site. A tinted headline answers "warmer or colder than today?" ("3 °C colder than today", "Summers like Tromsø today"). A strip shows one bar per dated sample, tinted by that sample's own temperature estimate (gaps stay empty; "warmest"/"coldest" jump to those samples); a slider snaps to the dates in the data. Below, the beetles in that slice sit in four columns: Cold-loving (<12 °C), Mild (12–16 °C), Warm-loving (>16 °C) by the beetle's summer midpoint, and No temperature data. Faded tiles no longer live near the site. Needs 5+ MCR species for a temperature; otherwise the headline names the biggest column. Indicative only: MCR covers 436 of 11,420 taxa.
-  - "Today" is the 1991–2020 July mean at the site's coordinates, fetched once per site from the Open-Meteo archive (ERA5) and cached in `data/cache/openmeteo/`. Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0, non-commercial use). No coordinates or no network → no number, the headline falls back to the biggest column.
-  - Comparison places (July mean °C, approximate normals): Longyearbyen 6, Nuuk 8, Reykjavík 11, Tromsø 12, Anchorage 15, Edinburgh 15, Oslo 17, Helsinki 18, London 19, Moscow 19, Toronto 22, Madrid 25, Beijing 27, Cairo 29, Dubai 34. The nearest to the estimate wins (tie → colder).
-
-Species and site pages link into these analyses, and the analyses link back to the map/species pages.
-
-## 1. Get the BugsCEP data (once)
-
-The app needs BugsCEP as a SQLite file at `data/bugs.sqlite`. The data file is not in git.
-
-**Option A: download and convert (about 30 seconds).**
-
-```sh
-brew install mdbtools          # Debian/Ubuntu: sudo apt install mdbtools
-./scripts/get-bugs-data.sh
-```
-
-The script:
-
-1. Downloads `https://www.bugscep.com/downloads/bugsdata.zip`. It sends a browser user agent, because bugscep.com rejects curl's default one.
-2. Unzips it to get `bugsdata.mdb`, a Microsoft Access file.
-3. Converts every table to SQLite with `mdb-schema` and `mdb-export`.
-4. Writes `data/bugs.sqlite` (about 62 MB, 43 tables).
-
-It needs `curl`, `unzip`, `sqlite3` and mdbtools.
-
-**Option B: reuse an existing converted copy.** If you already have one (for example in the sibling `mcp-investigations` project), either copy it to `data/bugs.sqlite` or point the app at it:
-
-```sh
-cp ../mcp-investigations/data/bugs.sqlite data/bugs.sqlite
-# or: echo "BUGS_DB=../mcp-investigations/data/bugs.sqlite" > .env
-```
-
-The app opens the file read-only and never changes it.
-
-## 2. Run it
-
-Needs [Bun](https://bun.sh) 1.3 or newer.
-
-```sh
-bun start
-```
-
-This installs dependencies, builds the web page, and starts the server. It prints:
+Requires [Bun](https://bun.sh) 1.3+, plus `mdbtools` for the first-time data download.
 
 ```
-BugsCEP + SEAD explorer running at  http://127.0.0.1:5178
+git clone https://github.com/Gidntsquia/bugs-sead-explorer
+cd bugs-sead-explorer
+./scripts/get-bugs-data.sh   # Downloads BugsCEP and converts it to data/bugs.sqlite (~30 s, 62 MB, needed once)
+bun start                    # Installs, builds and serves on http://127.0.0.1:5178
 ```
 
-Open that URL.
+IMPORTANT: the data file isn't in git, so the app won't start until `data/bugs.sqlite` exists. If you already have a converted copy, put it there instead of running the script.
 
-- Settings (port, data file path, SEAD address, cache time) are in `.env`; copy `.env.example` to start one. All paths are relative to this folder.
-- For development with hot reload, run `bun run dev:server` and `bun run dev:web` in two terminals, then open the Vite URL (http://127.0.0.1:5173).
-- `bun run typecheck` checks the TypeScript.
-
-### How SEAD is used
-
-- SEAD is queried live, but politely.
-  - At most 3 requests run at once.
-  - Every answer is saved in `data/cache/sead/` and reused for 24 hours (`SEAD_CACHE_HOURS`).
-  - Nothing is bulk-downloaded.
-- The biggest single request is the list of all ~59,000 SEAD datasets (two numbers each), which the comparison page needs. It takes about 15–20 s the first time and is then served from the cache.
-- If SEAD can't be reached, a banner says so and each SEAD panel shows "SEAD is unreachable". Everything from BugsCEP keeps working.
-  - The map's country outlines ship with the app, so the map still shows land offline.
-  - Map tiles come from openstreetmap.org and need the internet.
-
-## 3. What putting it online would take
-
-The app is one Bun process that serves both the API and the built page. It needs the SQLite file next to it.
-
-**Known:**
-
-- **Server:** any host that can run Bun (a small VM, Fly.io, Railway, a Docker container). Set `HOST=0.0.0.0` and `PORT`, and ship `data/bugs.sqlite` (62 MB) with it or mount it. Memory use measured at about 90 MB just after start (BugsCEP is copied into memory); it grows as SEAD answers are cached.
-- **SEAD cross-origin access:** checked on 2026-09-27. `browser.sead.se/postgrest` sends `Access-Control-Allow-Origin: *`, so a browser on another website could call it directly. This app calls SEAD from its own server anyway, so it can cache answers and stay polite.
-- **Cache:** `data/cache` must be writable. If it isn't, the app still works but asks SEAD more often.
-- **HTTPS, a domain name and a process manager** come from the host.
-
-**Not known yet (labelled unknowns):**
-
-- **BugsCEP licence (unknown).** Whether the BugsCEP data may be re-published or served on a public website has not been checked. The download is public, but the terms are not stated next to it. Ask the BugsCEP maintainers before going public.
-- **SEAD licence and terms of use (unknown).** The API needs no login. What SEAD's data licence requires (attribution wording, allowed uses) has not been checked.
-- **SEAD rate limits (unknown).** No rate-limit headers were seen, and none are documented where we looked. A public site with many users would lean on the cache; a longer `SEAD_CACHE_HOURS` would reduce load further.
-- **SEAD API stability (unknown).** `browser.sead.se/postgrest` is the endpoint SEAD's own browser uses. It is not documented as a public API with a stability promise, so table or column changes could break parts of the app. `api.sead.se` did not answer when tried.
-- **OpenStreetMap tiles.** The public tile server allows light use with attribution (shown on the map). Heavy public traffic would need another tile provider.
-
-## Project layout
+Other commands:
 
 ```
-server/        Bun server: BugsCEP (bun:sqlite), SEAD client + cache, site matching, table descriptions
-web/           React + Vite + Tailwind front end
-scripts/       get-bugs-data.sh (download + convert BugsCEP)
-data/          bugs.sqlite and the SEAD cache (not in git)
+bun run dev:server   # API with hot reload (run next to dev:web)
+bun run dev:web      # Vite dev server on http://127.0.0.1:5173
+bun run typecheck    # Checks the TypeScript
 ```
 
-## Data sources and citation
+Settings (port, data file path, SEAD address, cache time) go in `.env`; copy `.env.example` to start one.
 
-This app is a viewer; it does not own or redistribute the underlying data. No data files are in this repository — see "Get the BugsCEP data" above.
+## Features 🔬
 
-- **BugsCEP** — the Bugs Coleopteran Ecology Package. Buckland, P.I. and Buckland, P.C. *BugsCEP Coleopteran Ecology Package*, [bugscep.com](https://www.bugscep.com). See also: Buckland, P.I., 2014. "The Bugs Coleopteran Ecology Package (BugsCEP) database: 1000 sites and half a million fossils later." *Quaternary International*, 341, pp.192–205.
-- **SEAD** — the Strategic Environmental Archaeology Database, Umeå University, Sweden. [sead.se](https://www.sead.se). Queried live from `https://browser.sead.se/postgrest`; see SEAD's own site for its citation and licence terms.
+- A map of all BugsCEP sites with matching SEAD records, plus species lookup and a raw table browser.
+- Filter by country, period, habitat group or species and see site, sample, individual and taxa counts with charts.
+- A change-over-time chart for a species, habitat group or country, binned from 100 to 1000 years.
+- A habitat mix view that compares the share of beetles per habitat group at one or two sites.
+- A 3D view of every located sample, with height from age and colour from dominant habitat.
+- A Time machine with a "colder or warmer than today" headline, a strip of dated samples and the beetles in each slice sorted by the temperatures they live in.
+- A BugsCEP vs SEAD comparison page and a glossary.
+- If SEAD can't be reached, a banner says so and everything from BugsCEP keeps working.
 
-Check each project's own terms before any public or commercial use of their data.
+## Documentation 📚
+
+More details in the [docs](docs) folder:
+
+- [Getting the BugsCEP Data](docs/Getting-the-BugsCEP-Data.md) — download, convert, or reuse a copy
+- [Analyses](docs/Analyses.md) — filter, time series, habitat mix, 3D view
+- [Time Machine](docs/Time-Machine.md) — headline, strip, temperature bins, Open-Meteo
+- [How SEAD Is Used](docs/How-SEAD-Is-Used.md) — request limits, caching, development, layout
+- [Putting It Online](docs/Putting-It-Online.md) — hosting needs and open licence questions
+- [Data Sources and Citation](docs/Data-Sources-and-Citation.md) — BugsCEP, SEAD, Open-Meteo
+
+## License 📄
+
+[MIT](LICENSE). BugsCEP and SEAD data are downloaded or queried at run time and aren't distributed in this repo; check their terms before public or commercial use.
