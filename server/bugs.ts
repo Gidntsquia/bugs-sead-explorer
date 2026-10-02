@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { config } from "./config";
 import { bugsTableDescriptions, bugsColumnDescriptions } from "./descriptions";
 
@@ -442,4 +443,46 @@ export function bugsTimeMachine(siteCode: string) {
   });
   return { site, samples, undated: all.length - samples.length, taxa, mcr, distrib, curve,
     oldestBP: bounds[0] ?? null, youngestBP: bounds[bounds.length - 1] ?? null };
+}
+
+// ---------- today's July mean (Open-Meteo ERA5), one call per site, cached on disk ----------
+const todayDir = join(config.cacheDir, "openmeteo");
+const todayInflight = new Map<string, Promise<unknown>>();
+let todayActive = 0;
+
+export type Today = { julyMean: number; years: string; source: string } | null;
+
+async function fetchJulyMean(lat: number, lon: number): Promise<Today> {
+  const url = `${config.openMeteoUrl}/v1/archive?latitude=${lat}&longitude=${lon}&start_date=1991-01-01&end_date=2020-12-31&daily=temperature_2m_mean&timezone=UTC`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  const j: any = await res.json();
+  const days: string[] = j?.daily?.time ?? [], vals: (number | null)[] = j?.daily?.temperature_2m_mean ?? [];
+  let sum = 0, n = 0;
+  days.forEach((d, i) => { if (d.slice(5, 7) === "07" && vals[i] != null) { sum += vals[i]!; n++; } });
+  if (n < 300) throw new Error("Open-Meteo returned too few July days");
+  return { julyMean: Math.round((sum / n) * 10) / 10, years: "1991–2020", source: "ERA5 via Open-Meteo" };
+}
+
+export async function bugsToday(siteCode: string): Promise<Today> {
+  const site = one<any>(`SELECT LatDD AS lat, LongDD AS lon FROM TSite WHERE SiteCODE=?`, siteCode);
+  if (!site) throw new HttpError(404, `No BugsCEP site ${siteCode}`);
+  if (site.lat == null || site.lon == null) return null;
+  mkdirSync(todayDir, { recursive: true });
+  const file = join(todayDir, `${siteCode.replace(/[^A-Za-z0-9_-]/g, "")}.json`);
+  if (existsSync(file)) { try { return JSON.parse(readFileSync(file, "utf8")); } catch { /* refetch */ } }
+  const running = todayInflight.get(siteCode);
+  if (running) return running as Promise<Today>;
+  const p = (async () => {
+    while (todayActive >= 3) await new Promise(r => setTimeout(r, 200));
+    todayActive++;
+    try {
+      const t = await fetchJulyMean(site.lat, site.lon);
+      writeFileSync(file, JSON.stringify(t));
+      return t;
+    } catch (e) { console.warn("today:", String(e)); return null; } // never fabricate; failures are not cached
+    finally { todayActive--; todayInflight.delete(siteCode); }
+  })();
+  todayInflight.set(siteCode, p);
+  return p;
 }

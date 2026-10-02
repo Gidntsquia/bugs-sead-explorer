@@ -10,24 +10,26 @@ type Payload = {
   site: { code: string; name: string; region: string | null; country: string | null; lat: number | null; lon: number | null };
   samples: TMSample[]; undated: number; oldestBP: number | null; youngestBP: number | null;
   taxa: Record<string, { name: string; family: string }>; mcr: Record<string, Mcr>; distrib: Record<string, string>;
-  curve: { year: number; samples: number; n: number; status: string; summer: Interval | null; winter: Interval | null; nearSummer: Interval | null; k: number | null }[];
 };
+type Today = { julyMean: number; years: string; source: string } | null;
 type SiteRow = { code: string; name: string; country: string; region: string | null; dated: number };
 
 const iv = (i: Interval) => (i[0] === i[1] ? `${i[0]}` : `${i[0]} to ${i[1]}`);
 const bp = (n: number) => `${fmt(n)} BP`;
 // One ramp for the whole page: blue (<= 8 C) through pale sand (14 C) to orange (>= 20 C) on a summer midpoint; grey = no MCR.
-const STOPS: [number, number, number][] = [[37, 99, 200], [226, 220, 205], [224, 92, 16]];
+const STOPS: [number, number, number, number][] = [[8, 37, 99, 200], [11, 120, 170, 230], [14, 246, 226, 130], [17, 240, 160, 70], [20, 214, 74, 12]];
 const tintRgb = (t: number) => {
-  const x = Math.min(1, Math.max(0, (t - 8) / 12)) * 2, i = Math.min(1, Math.floor(x)), f = x - i;
-  return STOPS[i].map((c, k) => Math.round(c + (STOPS[i + 1][k] - c) * f));
+  const x = Math.min(20, Math.max(8, t));
+  const i = Math.min(STOPS.length - 2, STOPS.findIndex((st, k) => x <= STOPS[k + 1][0] && k < STOPS.length - 1));
+  const [t0, ...c0] = STOPS[i], [t1, ...c1] = STOPS[i + 1], f = (x - t0) / (t1 - t0);
+  return c0.map((c, k) => Math.round(c + (c1[k] - c) * f));
 };
 const tint = (t: number | null, a = 1) => {
   if (t == null) return `rgba(184, 176, 164, ${a})`;
   const [r, g, b] = tintRgb(t);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 };
-const pale = (t: number) => Math.abs(t - 14) < 3.5;
+const pale = (t: number) => t > 11.5 && t < 17.5;
 const mid = (m: Mcr) => (m.tMaxLo + m.tMaxHi) / 2;
 
 export default function TimeMachine() {
@@ -75,42 +77,37 @@ function Chooser({ current, onPick }: { current: string | null; onPick: (c: stri
 
 function SiteView({ code, startYear }: { code: string; startYear: number | null }) {
   const { data: d, error } = useApi<Payload>(`bugs/timemachine?site=${encodeURIComponent(code)}`);
+  const today = useApi<Today>(`bugs/today?site=${encodeURIComponent(code)}`);
   if (error) return <ErrorBox error={error} />;
-  if (!d) return <Loading what="Loading site" />;
+  if (!d || today.loading) return <Loading what="Loading site" />;
   const s = d.site;
   if (d.oldestBP == null || d.youngestBP == null)
     return <Missing>{s.name} has no dated samples, so there is nothing to slide through.</Missing>;
-  return <Loaded d={d} startYear={startYear} />;
+  return <Loaded d={d} today={today.data} startYear={startYear} />;
 }
 
 
 const Q = ({ tip }: { tip: string }) => <span title={tip} className="ml-1 inline-block h-4 w-4 cursor-help rounded-full border border-line text-center text-[10px] leading-[14px] text-muted">?</span>;
+const PLACES: [string, number][] = [["Longyearbyen", 6], ["Nuuk", 8], ["Reykjavík", 11], ["Tromsø", 12], ["Anchorage", 15], ["Edinburgh", 15], ["Oslo", 17], ["Helsinki", 18], ["London", 19], ["Moscow", 19], ["Toronto", 22], ["Madrid", 25], ["Beijing", 27], ["Cairo", 29], ["Dubai", 34]];
+// Nearest July mean wins; a tie goes to the colder place.
+const place = (t: number) => PLACES.reduce((b, p) => (Math.abs(p[1] - t) < Math.abs(b[1] - t) || (Math.abs(p[1] - t) === Math.abs(b[1] - t) && p[1] < b[1]) ? p : b));
+const COLD = 12, WARM = 16;
+const bin = (t: number) => (t < COLD ? 0 : t > WARM ? 2 : 1);
+const BIN_NAMES = ["Cold-loving", "Mild", "Warm-loving", "No temperature data"];
+const BIN_TEXT = ["Mostly cold-loving beetles", "Mostly mild beetles", "Mostly warm-loving beetles"];
+const BIN_CENTRE = [6, 14, 20];
+// Summer midpoint of an estimate (a range-basis near-miss still has all summers agreeing).
+function summerMid(e: ReturnType<typeof estimate>, codes: string[], mcr: Record<string, Mcr>): number | null {
+  if (e.status === "none") return null;
+  if (e.status === "ok") return (e.summer[0] + e.summer[1]) / 2;
+  if (e.basis === "summer") return (e.agree[0] + e.agree[1]) / 2;
+  const lo = Math.max(...codes.map(c => mcr[c].tMaxLo)), hi = Math.min(...codes.map(c => mcr[c].tMaxHi));
+  return (lo + hi) / 2;
+}
 const INDICATIVE = "MCR covers 436 of 11,420 taxa; dates are mixed-precision.";
 const GRID_RULE = (terms: string[]) => `Faded tiles: the beetle's recorded modern range never mentions ${terms.join(", ") || "the site's country"} (a text match, so check the tooltip). Tinted by summer temperature from MCR; grey = no MCR data.`;
 
-const T_LO = -20, T_HI = 32;
-function Thermometer({ est }: { est: ReturnType<typeof estimate> }) {
-  const W = 56, H = 120, y = (t: number) => H - ((Math.min(T_HI, Math.max(T_LO, t)) - T_LO) / (T_HI - T_LO)) * H;
-  const band = (x: number, i: Interval, fill: string, hatch: boolean) => (
-    <rect x={x} y={y(i[1])} width={14} height={Math.max(3, y(i[0]) - y(i[1]))} fill={hatch ? "url(#hatch)" : fill} stroke={fill} strokeWidth={1.5} strokeDasharray={hatch ? "3 2" : undefined} rx={2} />
-  );
-  const tip = est.status === "none" ? `Only ${est.n} of ${MIN_MCR} MCR species: not enough for a temperature`
-    : est.status === "ok" ? `${est.n} MCR species all agree`
-    : `Best fit: ${est.k} of ${est.n} MCR species agree. Left out: ${est.excluded.join(", ")}`;
-  return (
-    <svg width={W} height={H + 4} viewBox={`0 -2 ${W} ${H + 4}`} role="img" aria-label="Temperature estimate">
-      <title>{tip}</title>
-      <defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#fff" /><line x1="0" y1="0" x2="0" y2="5" stroke="#c2410c" strokeWidth="2" /></pattern></defs>
-      <line x1={9} x2={9} y1={0} y2={H} stroke="#d6cbb8" strokeWidth={2} />
-      {[-10, 0, 10, 20, 30].map(t => <g key={t}><line x1={6} x2={12} y1={y(t)} y2={y(t)} stroke="#9a8d78" /><text x={0} y={y(t) + 3} fontSize={7} fill="#9a8d78" style={{ display: "none" }}>{t}</text></g>)}
-      {est.status === "ok" && <>{band(20, est.summer, "#ea580c", false)}{band(38, est.winter, "#2563eb", false)}</>}
-      {est.status === "nearmiss" && <>{band(20, est.agree, "#ea580c", true)}{est.winter && band(38, est.winter, "#2563eb", true)}</>}
-      {est.status === "none" && <text x={34} y={H / 2 + 14} textAnchor="middle" fontSize={40} fill="#b8ab94">?</text>}
-    </svg>
-  );
-}
-
-function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
+function Loaded({ d, today, startYear }: { d: Payload; today: Today; startYear: number | null }) {
   const s = d.site;
   const name = (c: string) => d.taxa[c]?.name ?? c;
   // Snap stops: every range boundary and range midpoint of every sample (each lies inside its own range, so every stop is covered), oldest first.
@@ -129,13 +126,45 @@ function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
   const mcrCodes = slice.taxa.map(t => t.code).filter(c => d.mcr[c]);
   const est = useMemo(() => estimate(mcrCodes, d.mcr, name), [slice]); // eslint-disable-line react-hooks/exhaustive-deps
   const terms = localTerms(s.country, s.region);
-  const heat = est.status === "ok" ? (est.summer[0] + est.summer[1]) / 2 : est.status === "nearmiss" ? (est.agree[0] + est.agree[1]) / 2 : null;
+  const heat = summerMid(est, mcrCodes, d.mcr);
 
-  // Strip: one row per sample (rows shared by samples that do not overlap), a segment per dating range.
+  // Tiles into fixed bins by the taxon's own summer midpoint.
+  const tiles = useMemo(() => {
+    const t = slice.taxa.map(x => {
+      const m = d.mcr[x.code];
+      const dist = d.distrib[x.code];
+      return { ...x, name: name(x.code), m, dist, ghost: !!dist && isGhost(dist, terms) };
+    });
+    const cols: typeof t[] = [[], [], [], []];
+    for (const x of t) cols[x.m ? bin(mid(x.m)) : 3].push(x);
+    for (let i = 0; i < 3; i++) cols[i].sort((a, b) => mid(a.m) - mid(b.m) || a.name.localeCompare(b.name));
+    cols[3].sort((a, b) => a.name.localeCompare(b.name));
+    return cols;
+  }, [slice, d.mcr, d.distrib]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Headline: warmer or colder than today, or the biggest bin when there is no estimate.
+  const big = tiles[0].length === 0 && tiles[1].length === 0 && tiles[2].length === 0 ? -1
+    : [0, 1, 2].reduce((b, i) => (tiles[i].length > tiles[b].length ? i : b), 0);
+  const useNumber = heat != null && today != null;
+  const diff = useNumber ? Math.round(heat! - today!.julyMean) : 0;
+  const same = useNumber && Math.abs(heat! - today!.julyMean) < 1;
+  const line2 = !useNumber ? (big < 0 ? "No beetles with temperature data" : BIN_TEXT[big])
+    : same ? "About the same as today" : `${Math.abs(diff)} °C ${diff < 0 ? "colder" : "warmer"} than today`;
+  const bgT = useNumber ? heat : big >= 0 ? BIN_CENTRE[big] : null;
+  const pl = useNumber ? place(heat!) : null;
+  const winter = est.status === "ok" ? est.winter : est.status === "nearmiss" ? est.winter : null;
+  const line2Tip = !useNumber
+    ? est.status === "none" ? `Fewer than ${MIN_MCR} beetles with temperature data (${est.n} of ${MIN_MCR})` : "Today's climate unavailable"
+    : [`Summer then ${iv(est.status === "ok" ? est.summer : est.status === "nearmiss" ? est.agree : [0, 0])} °C`, `today ${today!.julyMean} °C (${today!.years})`,
+       `${est.n} beetle kinds with temperature data`, winter ? `winter then ${iv(winter)} °C` : "", est.status === "nearmiss" ? `Left out: ${est.excluded.join(", ")}` : ""].filter(Boolean).join(" · ");
+  const dark = bgT == null || !pale(bgT) ? "text-white" : "text-ink";
+
+  // Strip: one row per sample, each bar tinted by that sample's own estimate.
   const strip = useMemo(() => {
     const items = d.samples.map(sa => {
-      const e = estimate(sa.taxa.map(t => t.code).filter(c => d.mcr[c]), d.mcr, c => c);
-      return { sa, older: Math.max(...sa.ranges.map(r => r.older)), younger: Math.min(...sa.ranges.map(r => r.younger)), heat: e.status === "ok" ? (e.summer[0] + e.summer[1]) / 2 : null };
+      const codes = sa.taxa.map(t => t.code).filter(c => d.mcr[c]);
+      const e = estimate(codes, d.mcr, c => c);
+      return { sa, older: Math.max(...sa.ranges.map(r => r.older)), younger: Math.min(...sa.ranges.map(r => r.younger)), heat: summerMid(e, codes, d.mcr) };
     }).sort((a, b) => b.older - a.older);
     const rowEnd: number[] = [];
     return items.map(it => {
@@ -145,6 +174,16 @@ function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
     });
   }, [d.samples, d.mcr]);
   const rows = Math.max(1, ...strip.map(x => x.row + 1));
+  const ends = useMemo(() => {
+    let w: (typeof strip)[number] | null = null, c: (typeof strip)[number] | null = null;
+    for (const code of d.samples.map(x => x.code)) {
+      const it = strip.find(x => x.sa.code === code)!;
+      if (it.heat == null) continue;
+      if (!w || it.heat > w.heat!) w = it;
+      if (!c || it.heat < c.heat!) c = it;
+    }
+    return w && c && w !== c ? { w, c } : null;
+  }, [strip, d.samples]);
   const ticks = useMemo(() => {
     const step = [50, 100, 200, 250, 500, 1000, 2000, 5000].find(t => span / t <= 7) ?? 10000;
     const out: number[] = [];
@@ -152,46 +191,46 @@ function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
     return out;
   }, [span, oldest, youngest]);
 
-  const tiles = useMemo(() => {
-    const t = slice.taxa.map(x => {
-      const m = d.mcr[x.code];
-      const dist = d.distrib[x.code];
-      return { ...x, name: name(x.code), m, dist, ghost: !!dist && isGhost(dist, terms) };
-    });
-    const warm = t.filter(x => x.m).sort((a, b) => mid(b.m) - mid(a.m) || a.name.localeCompare(b.name));
-    const rest = t.filter(x => !x.m).sort((a, b) => a.name.localeCompare(b.name));
-    return [...warm, ...rest];
-  }, [slice, d.mcr, d.distrib]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const go = (i: number) => setIdx(Math.min(stops.length - 1, Math.max(0, i)));
+  const jump = (it: (typeof strip)[number]) => go(nearestIdx(Math.round((it.older + it.younger) / 2)));
   const fmtDepth = (sa: TMSample) => (sa.depthTop == null ? "no depth" : `depth ${sa.depthTop}${sa.depthBot != null && sa.depthBot !== sa.depthTop ? `–${sa.depthBot}` : ""}`);
-  const barTip = (sa: TMSample) => `${sa.code}, ${fmtDepth(sa)}\n` + sa.ranges.map(r => `${r.kind}: ${fmt(r.younger)}–${fmt(r.older)} BP${r.detail ? ` (${r.detail})` : ""}`).join("\n");
-  const summerLine = est.status === "none" ? `${est.n} of ${MIN_MCR} MCR species`
-    : est.status === "ok" ? `Summer ${iv(est.summer)} °C · Winter ${iv(est.winter)} °C`
-    : `Summer ${iv(est.agree)} °C${est.winter ? ` · Winter ${iv(est.winter)} °C` : ""}`;
+  const barTip = (sa: TMSample, h: number | null) => `${sa.code}, ${fmtDepth(sa)}${h != null ? `, summer ~${Math.round(h)} °C` : ""}\n` + sa.ranges.map(r => `${r.kind}: ${fmt(r.younger)}–${fmt(r.older)} BP${r.detail ? ` (${r.detail})` : ""}`).join("\n");
+  const endLabel = (it: (typeof strip)[number], text: string) => (
+    <button key={text} onClick={() => jump(it)} className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-medium text-ink underline decoration-dotted"
+      style={{ left: pct(Math.round((it.older + it.younger) / 2)) }}>{text}</button>
+  );
 
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-x-6">
-        <div className="tab font-display text-5xl font-bold leading-none">{fmt(year)} <span className="text-xl font-medium text-muted">BP</span></div>
-        <h2 className="font-display text-lg font-semibold"><Link to={`/map?bugs=${s.code}`} className="hover:underline">{s.name}</Link> <span className="text-sm font-normal text-muted">{[s.region, s.country].filter(Boolean).join(", ")}</span></h2>
+        <h2 className="font-display text-lg font-semibold"><Link to={`/map?bugs=${s.code}`} className="hover:underline">{s.name}</Link> <span className="text-sm font-normal text-muted">{[s.region, s.country].filter(Boolean).join(", ")}</span><Q tip={INDICATIVE} /></h2>
+      </div>
+
+      <div data-testid="headline" className={`px-6 py-5 ${dark}`} style={{ background: tint(bgT) }}>
+        <div className="tab text-lg font-medium opacity-90">{fmt(year)} BP</div>
+        <div className="font-display text-4xl font-bold leading-tight" title={line2Tip} data-testid="line2">
+          {line2}{est.status === "nearmiss" && useNumber && <span className="ml-3 border border-dashed border-current px-1.5 align-middle text-xs font-normal">best fit</span>}
+        </div>
+        {pl && <div className="text-lg opacity-90" title={`${pl[0]} July mean ${pl[1]} °C`}>Summers like {pl[0]} today</div>}
       </div>
 
       <div>
+        <div className="relative h-4">{ends && <>{endLabel(ends.w, "warmest")}{endLabel(ends.c, "coldest")}</>}</div>
         <div className="relative border border-line bg-card" style={{ height: rows * 12 + 10 }} data-testid="strip">
           {ticks.map(t => <div key={t} className="absolute inset-y-0 border-l border-dashed border-line" style={{ left: pct(t) }} />)}
           {strip.map(it => (
-            <div key={it.sa.code} data-sample={it.sa.code} title={barTip(it.sa)} onClick={() => go(nearestIdx(Math.round((it.older + it.younger) / 2)))} className="cursor-pointer">
+            <div key={it.sa.code} data-sample={it.sa.code} title={barTip(it.sa, it.heat)} onClick={() => jump(it)} className="cursor-pointer">
               {it.sa.ranges.map((r, i) => (
                 <div key={i} className="absolute h-2.5 rounded-sm" style={{ left: pct(r.older), width: `max(3px, ${(100 * (r.older - r.younger)) / span}%)`, top: 5 + it.row * 12, background: tint(it.heat) }} />
               ))}
             </div>
           ))}
-          <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-ink" style={{ left: pct(year), background: "#2b2118" }} />
+          <div className="pointer-events-none absolute inset-y-0 w-0.5" style={{ left: pct(year), background: "#2b2118" }} />
           {d.undated > 0 && <span className="absolute right-1 top-0 bg-card/80 px-1 text-[10px] text-muted">{d.undated} undated</span>}
         </div>
         <div className="relative h-4 text-[10px] text-muted">
           {ticks.map(t => <span key={t} className="absolute -translate-x-1/2" style={{ left: pct(t) }}>{fmt(t)}</span>)}
+          {today && <span className="absolute right-0 top-0 font-medium text-ink" title={`July mean ${today.years}`}>today {today.julyMean} °C</span>}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => go(idx - 1)} disabled={idx === 0} aria-label="Older stop" className="border border-line px-2 py-0.5 disabled:opacity-30">‹</button>
@@ -200,30 +239,12 @@ function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <Thermometer est={est} />
-        <div>
-          <div className="tab text-lg font-semibold" title={est.status === "nearmiss" ? `Best fit: ${est.k} of ${est.n} agree. Left out: ${est.excluded.join(", ")}` : undefined}>
-            {summerLine}<Q tip={INDICATIVE} />
-          </div>
-          {est.status === "nearmiss" && <span className="border border-dashed border-line px-1.5 text-xs text-muted" title={`Left out: ${est.excluded.join(", ")}`}>best fit</span>}
-          {est.status === "none" && <div className="mt-1 flex gap-1" title={`Only ${est.n} of ${MIN_MCR} MCR species`}>{Array.from({ length: MIN_MCR }, (_, i) => <span key={i} className="h-3 w-3 rounded-full border border-line" style={{ background: i < est.n ? "#9a8d78" : "transparent" }} />)}</div>}
-        </div>
-        {s.lat != null && s.lon != null && (
-          <div className="ml-auto h-48 w-48 shrink-0 overflow-hidden border border-line">
-            <BaseMap center={[s.lat, s.lon]} zoom={7} className="h-full w-full">
-              <CircleMarker center={[s.lat, s.lon]} radius={8} pathOptions={{ color: "#fff", weight: 3, fillColor: tint(heat), fillOpacity: 1 }} />
-            </BaseMap>
-          </div>
-        )}
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Beetles in this slice<Q tip={GRID_RULE(terms)} /></h3>
-        {tiles.length === 0 ? <Missing>No beetles at this year.</Missing> : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-1.5" data-testid="grid">
-            {tiles.map(t => (
-              <Link key={t.code} to={`/species/${t.code}`} data-ghost={t.ghost ? 1 : 0} data-mcr={t.m ? 1 : 0}
+      <div className="grid grid-cols-4 items-start gap-2" data-testid="grid">
+        {tiles.map((col, ci) => (
+          <div key={ci} data-col={ci} className="min-w-0 space-y-1.5">
+            <h3 className="border-b border-line pb-1 text-sm font-semibold">{BIN_NAMES[ci]} · {col.length}{ci === 0 && <Q tip={GRID_RULE(terms)} />}</h3>
+            {col.map(t => (
+              <Link key={t.code} to={`/species/${t.code}`} data-ghost={t.ghost ? 1 : 0} data-mcr={t.m ? 1 : 0} data-mid={t.m ? mid(t.m) : ""}
                 title={`${t.name}\n${t.m ? `Summer ${t.m.tMaxLo}–${t.m.tMaxHi} °C today` : "No temperature data for this beetle"}${t.ghost ? `\nNot here today: ${t.dist}` : ""}`}
                 className={`relative block min-h-14 px-2 py-1.5 text-sm italic ${t.m && !pale(mid(t.m)) ? "text-white" : "text-ink"} ${t.ghost ? "border border-dashed border-ink/60 opacity-45" : "border border-transparent"}`}
                 style={{ background: tint(t.m ? mid(t.m) : null) }}>
@@ -233,8 +254,16 @@ function Loaded({ d, startYear }: { d: Payload; startYear: number | null }) {
               </Link>
             ))}
           </div>
-        )}
+        ))}
       </div>
+
+      {s.lat != null && s.lon != null && (
+        <div className="h-40 w-64 overflow-hidden border border-line">
+          <BaseMap center={[s.lat, s.lon]} zoom={7} className="h-full w-full">
+            <CircleMarker center={[s.lat, s.lon]} radius={8} pathOptions={{ color: "#fff", weight: 3, fillColor: tint(bgT), fillOpacity: 1 }} />
+          </BaseMap>
+        </div>
+      )}
     </>
   );
 }
